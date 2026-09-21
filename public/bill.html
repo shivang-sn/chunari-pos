@@ -1,0 +1,257 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Invoice - Chunari POS</title>
+<link rel="stylesheet" href="/css/style.css" />
+<style>
+  body { padding-bottom: 100px; background: var(--bg-alt); }
+  .actions-bar { max-width: 640px; margin: 0 auto 14px; padding: 0 16px; display: flex; flex-wrap: wrap; gap: 10px; }
+  .actions-bar .btn.whatsapp { flex-basis: 100%; }
+  .invoice {
+    max-width: 640px;
+    margin: 0 auto 24px;
+    background: #fffdfa;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 30px 26px;
+  }
+  .inv-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; border-bottom: 2px solid var(--ink); padding-bottom: 18px; margin-bottom: 20px; }
+  .inv-brand { display: flex; align-items: center; gap: 12px; }
+  .inv-logo { width: 52px; height: 52px; border-radius: 14px; object-fit: cover; }
+  .inv-logo-text { width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(145deg, var(--primary), var(--primary-dark)); color: #fff8f0; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 700; font-size: 22px; flex-shrink:0; }
+  .inv-shop-name { font-family: var(--font-display); font-size: 22px; font-weight: 700; }
+  .inv-owner-line { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+  .inv-meta { text-align: right; font-size: 12.5px; color: var(--ink-soft); }
+  .inv-meta .bn { font-family: var(--font-display); font-size: 18px; font-weight: 700; color: var(--primary-dark); }
+  .inv-section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-faint); margin-bottom: 8px; }
+  .inv-customer { margin-bottom: 22px; }
+  .inv-customer .name { font-weight: 700; font-size: 15px; margin-bottom: 3px; }
+  .inv-customer .line { font-size: 13px; color: var(--ink-soft); display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+  table.inv-table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+  table.inv-table th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--ink-faint); padding: 0 6px 8px; border-bottom: 1.5px solid var(--border-strong);
+  }
+  table.inv-table td { padding: 10px 6px; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+  table.inv-table th.num, table.inv-table td.num { text-align: right; }
+  table.inv-table .item-title { font-weight: 600; }
+  table.inv-table .item-size { color: var(--ink-faint); font-size: 11.5px; }
+  .inv-totals { display: flex; justify-content: flex-end; margin-top: 14px; }
+  .inv-totals table { min-width: 220px; }
+  .inv-totals td { padding: 5px 4px; font-size: 13.5px; }
+  .inv-totals .grand td { font-size: 18px; font-weight: 700; font-family: var(--font-display); color: var(--primary-dark); border-top: 2px solid var(--ink); padding-top: 10px; }
+  .inv-footer { margin-top: 26px; text-align: center; color: var(--ink-faint); font-size: 12px; }
+  .status-strip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: var(--radius-pill); font-size: 11.5px; font-weight: 700; margin-top: 8px; }
+  .btn.whatsapp { background: #25D366; box-shadow: 0 6px 18px -4px rgba(37, 211, 102, 0.45); }
+
+  /* ---------- 58mm thermal-style receipt (print only) ---------- */
+  .receipt58 { display: none; }
+  @media print {
+    header.topbar, nav.bottomnav, .actions-bar, .toast, .invoice { display: none !important; }
+    body { padding: 0; background: #fff; }
+    @page { size: 58mm auto; margin: 2mm; }
+    .receipt58 {
+      display: block;
+      width: 54mm;
+      margin: 0;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 10.5px;
+      line-height: 1.45;
+      color: #000;
+    }
+    .receipt58 .c { text-align: center; }
+    .receipt58 .b { font-weight: 700; }
+    .receipt58 .lg { font-size: 13px; }
+    .receipt58 .hr { border-top: 1px dashed #000; margin: 5px 0; }
+    .receipt58 .row { display: flex; justify-content: space-between; gap: 6px; }
+    .receipt58 .item-name { display: block; }
+    .receipt58 .item-line { display: flex; justify-content: space-between; }
+    .receipt58 .grand { font-size: 12.5px; }
+  }
+</style>
+
+<header class="topbar">
+  <a class="icon-btn" href="#" id="backIcon" onclick="history.back();return false;"></a>
+  <h1 style="font-size:16px;">Invoice</h1>
+  <span style="width:40px;"></span>
+</header>
+
+<div class="actions-bar" id="ownerActions" style="display:none;"></div>
+
+<div class="invoice" id="invoice">
+  <div class="empty-state">Loading invoice…</div>
+</div>
+<div class="receipt58" id="receipt58"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/icons.js"></script>
+<script src="/js/common.js"></script>
+<script>
+  document.getElementById('backIcon').innerHTML = icon('chevronLeft', 19);
+  const id = new URLSearchParams(location.search).get('id');
+
+  function statusStrip(status) {
+    if (status === 'paid') return `<span class="status-strip" style="background:var(--success-soft);color:var(--success);">${icon('checkCircle',14)} Paid</span>`;
+    if (status === 'cancelled') return `<span class="status-strip" style="background:var(--surface-sunk);color:var(--ink-faint);">${icon('xCircle',14)} Cancelled</span>`;
+    return `<span class="status-strip" style="background:var(--accent-soft);color:var(--accent);">${icon('alert',14)} Awaiting Payment</span>`;
+  }
+
+  function waNumber(mobile) {
+    const digits = (mobile || '').replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.length === 10 ? '91' + digits : digits;
+  }
+
+  function buildWhatsAppText(bill, shop) {
+    const dt = new Date(bill.createdAt);
+    const lines = [
+      `*${shop.shopName}*`,
+      `Bill ${fmtBillNo(bill.billNo)} · ${dt.toLocaleDateString()}`,
+      '',
+      ...bill.items.map((it) => `${it.title}${it.size ? ' (' + it.size + ')' : ''} x${it.qty} - ${fmtMoney(it.amount)}`),
+      '',
+      `*Total: ${fmtMoney(bill.totalAmount)}*`,
+      '',
+      `View bill: ${location.origin}/bill.html?id=${bill.id}`,
+      '',
+      `Thank you for shopping with ${shop.shopName}!`,
+    ];
+    return lines.join('\n');
+  }
+
+  function openWhatsAppShare(bill, shop) {
+    const number = waNumber(bill.customer.mobile);
+    const text = encodeURIComponent(buildWhatsAppText(bill, shop));
+    window.open(number ? `https://wa.me/${number}?text=${text}` : `https://wa.me/?text=${text}`, '_blank');
+  }
+
+  function buildReceipt58(bill, shop) {
+    const dt = new Date(bill.createdAt);
+    const ownerLines = [shop.ownerPhone, shop.ownerAddress].filter(Boolean).join(' · ');
+    const itemsHtml = bill.items
+      .map(
+        (it) => `
+      <div class="item-name">${it.title}${it.size ? ' - ' + it.size : ''}</div>
+      <div class="item-line"><span>${it.qty} x ${fmtMoney(it.rate)}</span><span>${fmtMoney(it.amount)}</span></div>`
+      )
+      .join('');
+    document.getElementById('receipt58').innerHTML = `
+      <div class="c b lg">${shop.shopName}</div>
+      ${ownerLines ? `<div class="c">${ownerLines}</div>` : ''}
+      <div class="hr"></div>
+      <div class="row"><span>${fmtBillNo(bill.billNo)}</span><span>${dt.toLocaleDateString()} ${dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
+      ${bill.customer.name ? `<div>Customer: ${bill.customer.name}</div>` : ''}
+      ${bill.customer.mobile ? `<div>Mobile: ${bill.customer.mobile}</div>` : ''}
+      <div class="hr"></div>
+      ${itemsHtml}
+      <div class="hr"></div>
+      ${bill.discountAmount > 0 ? `
+      <div class="row"><span>Subtotal</span><span>${fmtMoney(bill.subtotalAmount)}</span></div>
+      <div class="row"><span>${bill.discountLabel || 'Discount'} (${bill.discountPercent}%)</span><span>-${fmtMoney(bill.discountAmount)}</span></div>
+      ` : ''}
+      <div class="row grand b"><span>TOTAL</span><span>${fmtMoney(bill.totalAmount)}</span></div>
+      <div class="hr"></div>
+      <div class="c">Thank you! Visit again</div>
+    `;
+  }
+
+  async function load() {
+    const [bill, shop, me] = await Promise.all([
+      apiGet('/api/bills/' + id),
+      apiGet('/api/shop/info'),
+      apiGet('/api/auth/me'),
+    ]);
+
+    const dt = new Date(bill.createdAt);
+    const logo = shop.shopLogoUrl
+      ? `<img class="inv-logo" src="${shop.shopLogoUrl}" />`
+      : `<div class="inv-logo-text">${shop.shopName.trim().charAt(0).toUpperCase()}</div>`;
+
+    const ownerLines = [shop.ownerName, shop.ownerPhone, shop.ownerAddress].filter(Boolean).join(' · ');
+
+    const customerLines = [];
+    if (bill.customer.mobile) customerLines.push(`${icon('phone', 12)} ${bill.customer.mobile}`);
+    if (bill.customer.email) customerLines.push(`${icon('mail', 12)} ${bill.customer.email}`);
+    if (bill.customer.address) customerLines.push(`${icon('mapPin', 12)} ${bill.customer.address}`);
+
+    document.getElementById('invoice').innerHTML = `
+      <div class="inv-head">
+        <div class="inv-brand">
+          ${logo}
+          <div>
+            <div class="inv-shop-name">${shop.shopName}</div>
+            ${ownerLines ? `<div class="inv-owner-line">${ownerLines}</div>` : ''}
+          </div>
+        </div>
+        <div class="inv-meta">
+          <div class="bn">${fmtBillNo(bill.billNo)}</div>
+          <div>${dt.toLocaleDateString()} · ${dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+          <div>${statusStrip(bill.status)}</div>
+        </div>
+      </div>
+
+      ${bill.customer.name ? `
+      <div class="inv-customer">
+        <div class="inv-section-title">Billed to</div>
+        <div class="name">${bill.customer.name}</div>
+        ${customerLines.map((l) => `<div class="line">${l}</div>`).join('')}
+      </div>` : ''}
+
+      <div class="inv-section-title">Items</div>
+      <table class="inv-table">
+        <thead><tr><th>#</th><th>Item</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Amount</th></tr></thead>
+        <tbody>
+          ${bill.items.map((it, idx) => `
+            <tr>
+              <td>${idx + 1}</td>
+              <td><div class="item-title">${it.title}</div>${it.size ? `<div class="item-size">Size: ${it.size}</div>` : ''}</td>
+              <td class="num">${it.qty}</td>
+              <td class="num">${fmtMoney(it.rate)}</td>
+              <td class="num">${fmtMoney(it.amount)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+
+      <div class="inv-totals">
+        <table>
+          ${bill.discountAmount > 0 ? `
+          <tr><td>Subtotal</td><td class="num">${fmtMoney(bill.subtotalAmount)}</td></tr>
+          <tr><td>${bill.discountLabel || 'Discount'} (${bill.discountPercent}%)</td><td class="num">-${fmtMoney(bill.discountAmount)}</td></tr>` : ''}
+          <tr class="grand"><td>Total</td><td class="num">${fmtMoney(bill.totalAmount)}</td></tr>
+        </table>
+      </div>
+
+      <div class="inv-footer">Thank you for shopping with ${shop.shopName}!</div>
+    `;
+    buildReceipt58(bill, shop);
+
+    if (me.isOwner) {
+      const actions = document.getElementById('ownerActions');
+      actions.style.display = 'flex';
+      let btns = `<button class="btn whatsapp" id="waBtn">${icon('whatsapp', 17)}Share on WhatsApp</button>`;
+      btns += `<button class="btn secondary" id="printBtn">${icon('printer', 17)}Print / Save PDF</button>`;
+      if (bill.status === 'pending') {
+        btns += `<button class="btn dark" id="collectBtn">${icon('creditCard', 17)}Collect Payment</button>`;
+      }
+      actions.innerHTML = btns;
+      document.getElementById('waBtn').addEventListener('click', () => openWhatsAppShare(bill, shop));
+      document.getElementById('printBtn').addEventListener('click', () => window.print());
+      document.getElementById('collectBtn')?.addEventListener('click', async () => {
+        try {
+          await apiSend('/api/bills/' + id + '/collect', 'PATCH', {});
+          toast('Payment collected');
+          load();
+        } catch (err) {
+          toast(err.message, true);
+        }
+      });
+    } else {
+      document.getElementById('ownerActions').style.display = 'none';
+    }
+  }
+
+  load().catch((err) => {
+    document.getElementById('invoice').innerHTML = `<div class="empty-state"><div class="ic">${icon('search',24)}</div><div class="t">Invoice not found</div></div>`;
+  });
+  socket.on('bill:updated', (b) => { if (b.id === id) load(); });
+</script>

@@ -1,0 +1,344 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Chunari - Shop</title>
+<link rel="stylesheet" href="/css/style.css" />
+<style>
+  .sheet-backdrop {
+    position: fixed; inset: 0; background: rgba(34,23,18,0.5); z-index: 60;
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .sheet {
+    width: 100%; max-width: 480px; background: var(--surface);
+    border-radius: 22px 22px 0 0; padding: 20px; box-shadow: var(--shadow-lg);
+  }
+  .sheet .prod { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .sheet .prod img { width: 56px; height: 56px; border-radius: 12px; object-fit: cover; background: var(--surface-sunk); }
+  .sheet .prod .t { font-weight: 700; font-size: 15px; }
+  .sheet .prod .p { font-size: 13px; color: var(--ink-faint); }
+  .sheet-size-row { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 4px 0; }
+
+  /* ---------- Category stories (IG-story style circles + slider arrows) ---------- */
+  .story-row-wrap { position: relative; margin: 0 -16px 16px; }
+  .story-row {
+    display: flex; gap: 16px; overflow-x: auto; scroll-behavior: smooth; scrollbar-width: none;
+    padding: 4px 16px 8px;
+  }
+  .story-row::-webkit-scrollbar { display: none; }
+  .story-item { flex: 0 0 auto; width: 66px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; background: none; border: none; padding: 0; font-family: var(--font-body); }
+  .story-ring {
+    width: 60px; height: 60px; border-radius: 50%; padding: 2.5px; flex-shrink: 0;
+    background: var(--border-strong); transition: background .18s ease;
+  }
+  .story-item.active .story-ring { background: linear-gradient(135deg, var(--primary), var(--accent)); }
+  .story-avatar {
+    width: 100%; height: 100%; border-radius: 50%; overflow: hidden; background: var(--surface-sunk);
+    border: 2.5px solid var(--bg); display: flex; align-items: center; justify-content: center; color: var(--primary-dark);
+  }
+  .story-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .story-label {
+    font-size: 11px; font-weight: 700; color: var(--ink-soft); text-align: center; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; max-width: 66px;
+  }
+  .story-item.active .story-label { color: var(--primary-dark); }
+  .story-arrow {
+    position: absolute; top: 26px; transform: translateY(-50%); width: 28px; height: 28px; border-radius: 50%;
+    border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-md);
+    display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; color: var(--ink-soft);
+  }
+  .story-arrow.left { left: 2px; }
+  .story-arrow.right { right: 2px; }
+  .story-arrow.hidden { display: none; }
+  @media (hover: hover) { .story-arrow:hover { color: var(--primary-dark); } }
+</style>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark" id="logoMark">C</div>
+    <div>
+      <span class="eyebrow" id="shopEyebrow">Welcome</span>
+      <h1 id="shopName">Shop</h1>
+    </div>
+  </div>
+  <div class="row" style="width:auto;gap:8px;">
+    <span class="icon-btn" id="scanToggle"></span>
+    <a class="icon-btn" href="/login.html" id="loginIcon"></a>
+  </div>
+</header>
+
+<div class="container">
+  <div class="offer-banner" id="offerBanner" style="display:none;">
+    <div class="badge" id="offerBadge"></div>
+    <div>
+      <div class="t" id="offerTitle"></div>
+      <div class="d">Ask at checkout to apply this offer</div>
+    </div>
+  </div>
+
+  <div class="scanner-panel" id="scannerBox" style="display:none;">
+    <div id="reader"></div>
+    <p class="hint">Point the camera at a product's QR code</p>
+  </div>
+
+  <div class="search-bar">
+    <span class="icon" id="searchIcon"></span>
+    <input type="text" id="search" placeholder="Search products…" />
+  </div>
+  <div class="story-row-wrap">
+    <button type="button" class="story-arrow left hidden" id="storyArrowLeft"></button>
+    <div class="story-row" id="catStories"></div>
+    <button type="button" class="story-arrow right hidden" id="storyArrowRight"></button>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="empty-state" id="empty" style="display:none;">
+    <div class="ic" id="emptyIcon"></div>
+    <div class="t">No products found</div>
+    <div class="d">Try a different search.</div>
+  </div>
+</div>
+
+<div id="sheetHost"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/vendor/html5-qrcode.min.js"></script>
+<script src="/js/icons.js"></script>
+<script src="/js/common.js"></script>
+<script>
+  renderBottomNav('shop', 'customer');
+  document.getElementById('scanToggle').innerHTML = icon('scanLine', 19);
+  document.getElementById('loginIcon').innerHTML = icon('lock', 17);
+  document.getElementById('searchIcon').innerHTML = icon('search', 18);
+  document.getElementById('emptyIcon').innerHTML = icon('search', 24);
+
+  let all = [];
+  let activeCat = 'All';
+
+  document.getElementById('storyArrowLeft').innerHTML = icon('chevronLeft', 15);
+  document.getElementById('storyArrowRight').innerHTML = icon('chevronLeft', 15);
+  document.getElementById('storyArrowRight').style.transform = 'translateY(-50%) rotate(180deg)';
+
+  function updateStoryArrows() {
+    const row = document.getElementById('catStories');
+    const left = document.getElementById('storyArrowLeft');
+    const right = document.getElementById('storyArrowRight');
+    const canScroll = row.scrollWidth > row.clientWidth + 4;
+    left.classList.toggle('hidden', !canScroll || row.scrollLeft <= 4);
+    right.classList.toggle('hidden', !canScroll || row.scrollLeft >= row.scrollWidth - row.clientWidth - 4);
+  }
+  document.getElementById('catStories').addEventListener('scroll', updateStoryArrows);
+  document.getElementById('storyArrowLeft').addEventListener('click', () => {
+    document.getElementById('catStories').scrollBy({ left: -180, behavior: 'smooth' });
+  });
+  document.getElementById('storyArrowRight').addEventListener('click', () => {
+    document.getElementById('catStories').scrollBy({ left: 180, behavior: 'smooth' });
+  });
+
+  function renderTabs() {
+    const firstImage = {};
+    all.forEach((p) => {
+      const cat = p.category || '';
+      if (cat && !firstImage[cat] && p.imageUrl) firstImage[cat] = p.imageUrl;
+    });
+    const cats = [...new Set(all.map((p) => p.category).filter(Boolean))].sort();
+    if (!['All', ...cats].includes(activeCat)) activeCat = 'All';
+    const items = [{ key: 'All', label: 'All' }, ...cats.map((c) => ({ key: c, label: c, image: firstImage[c] }))];
+
+    document.getElementById('catStories').innerHTML = items
+      .map(
+        (item) => `<button type="button" class="story-item${item.key === activeCat ? ' active' : ''}" data-key="${item.key}">
+          <div class="story-ring">
+            <div class="story-avatar">${item.image ? `<img src="${item.image}" onerror="this.remove()" />` : icon('grid', 22)}</div>
+          </div>
+          <span class="story-label">${item.label}</span>
+        </button>`
+      )
+      .join('');
+    document.querySelectorAll('.story-item').forEach((btn) => {
+      btn.addEventListener('click', () => { activeCat = btn.dataset.key; render(); });
+    });
+    requestAnimationFrame(updateStoryArrows);
+  }
+
+  function render() {
+    renderTabs();
+    const q = document.getElementById('search').value.trim().toLowerCase();
+    let filtered = q ? all.filter((p) => p.title.toLowerCase().includes(q)) : all;
+    if (activeCat !== 'All') filtered = filtered.filter((p) => p.category === activeCat);
+    const grid = document.getElementById('grid');
+    document.getElementById('empty').style.display = filtered.length ? 'none' : 'block';
+    grid.innerHTML = filtered
+      .map((p) => {
+        const chip = p.stockQty === 0 ? '<span class="stock-chip out">Out of stock</span>' : p.stockQty <= 2 ? `<span class="stock-chip low">Only ${p.stockQty} left</span>` : '';
+        const priceText = p.isVariant
+          ? `${fmtMoney(Math.min(...p.variantOptions.map((o) => o.sellingPrice)))}–${fmtMoney(Math.max(...p.variantOptions.map((o) => o.sellingPrice)))}`
+          : fmtMoney(p.sellingPrice);
+        return `<a class="product-card" href="/product.html?id=${p.id}">
+          <div class="thumb-wrap">
+            <img class="thumb" src="${p.imageUrl || ''}" onerror="this.style.opacity=0" />
+            ${chip}
+          </div>
+          <div class="body">
+            <p class="title">${p.title}</p>
+            <div class="price-row">
+              <span class="price">${priceText}</span>
+            </div>
+          </div>
+        </a>`;
+      })
+      .join('');
+  }
+
+  async function load() {
+    all = await apiGet('/api/shop/products');
+    render();
+  }
+
+  async function loadShopInfo() {
+    const info = await apiGet('/api/shop/info');
+    document.getElementById('shopName').textContent = info.shopName;
+    document.getElementById('shopEyebrow').textContent = 'Welcome to';
+    if (info.shopLogoUrl) {
+      document.getElementById('logoMark').outerHTML = `<img id="logoMark" src="${info.shopLogoUrl}" style="width:38px;height:38px;border-radius:12px;object-fit:cover;box-shadow:var(--shadow-glow);" />`;
+    } else {
+      document.getElementById('logoMark').textContent = info.shopName.trim().charAt(0).toUpperCase();
+    }
+    const offer = info.offer;
+    const banner = document.getElementById('offerBanner');
+    if (offer && offer.enabled && offer.percent > 0) {
+      banner.style.display = 'flex';
+      document.getElementById('offerBadge').textContent = offer.percent + '%';
+      document.getElementById('offerTitle').textContent = `🎉 ${offer.label} — ${offer.percent}% OFF`;
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  document.getElementById('search').addEventListener('input', render);
+  load();
+  loadShopInfo();
+  socket.on('product:created', load);
+  socket.on('product:updated', load);
+  socket.on('product:deleted', load);
+  socket.on('offer:updated', loadShopInfo);
+
+  // ---- QR scanner: show a View Details / Add to Cart action sheet ----
+  let scanner = null;
+  let scanLocked = false;
+
+  document.getElementById('scanToggle').addEventListener('click', () => {
+    const box = document.getElementById('scannerBox');
+    const toggle = document.getElementById('scanToggle');
+    if (box.style.display === 'none') {
+      box.style.display = 'block';
+      toggle.classList.add('on');
+      startScanner();
+    } else {
+      box.style.display = 'none';
+      toggle.classList.remove('on');
+      stopScanner();
+    }
+  });
+
+  function extractProductId(text) {
+    const m = text.match(/\/product\/([a-f0-9-]{36})/i);
+    return m ? m[1] : null;
+  }
+
+  function openAddSheet(product) {
+    scanLocked = true;
+    let sheetSize = product.isVariant ? product.variantOptions[0].key : null;
+    const host = document.getElementById('sheetHost');
+
+    function sizeRows() {
+      if (!product.isVariant) return '';
+      return `<div style="margin-bottom:14px;">
+        ${product.variantOptions.map((o) => `
+          <label class="sheet-size-row">
+            <span style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;">
+              <input type="checkbox" class="sheetSizeCheck" data-key="${o.key}" ${sheetSize === o.key ? 'checked' : ''} style="width:17px;height:17px;" />
+              ${o.label}
+            </span>
+            <span style="font-weight:700;">${fmtMoney(o.sellingPrice)}</span>
+          </label>`).join('')}
+      </div>`;
+    }
+
+    function priceLine() {
+      const opt = product.isVariant ? product.variantOptions.find((o) => o.key === sheetSize) : null;
+      const sp = opt ? opt.sellingPrice : product.sellingPrice;
+      const stock = opt ? opt.stockQty : product.stockQty;
+      return `${fmtMoney(sp)} · ${stock === 0 ? 'Out of stock' : stock + ' in stock'}`;
+    }
+
+    function renderSheet() {
+      const opt = product.isVariant ? product.variantOptions.find((o) => o.key === sheetSize) : null;
+      const outOfStock = (opt ? opt.stockQty : product.stockQty) === 0;
+      host.innerHTML = `
+        <div class="sheet-backdrop" id="sheetBackdrop">
+          <div class="sheet">
+            <div class="prod">
+              <img src="${product.imageUrl || ''}" onerror="this.style.opacity=0" />
+              <div>
+                <div class="t">${product.title}</div>
+                <div class="p" id="sheetPriceLine">${priceLine()}</div>
+              </div>
+            </div>
+            ${sizeRows()}
+            <div class="row">
+              <button class="btn secondary" id="sheetView">${icon('search',16)} View Details</button>
+              <button class="btn" id="sheetAdd" ${outOfStock ? 'disabled' : ''}>${icon('bag',16)} Add to Cart</button>
+            </div>
+          </div>
+        </div>`;
+      document.getElementById('sheetBackdrop').addEventListener('click', (e) => {
+        if (e.target.id === 'sheetBackdrop') closeSheet();
+      });
+      document.getElementById('sheetView').addEventListener('click', () => {
+        location.href = '/product.html?id=' + product.id;
+      });
+      document.getElementById('sheetAdd').addEventListener('click', () => {
+        addToCart(product.id, sheetSize, 1);
+        toast('Added to cart: ' + product.title);
+        closeSheet();
+      });
+      document.querySelectorAll('.sheetSizeCheck').forEach((el) => {
+        el.addEventListener('change', () => { sheetSize = el.dataset.key; renderSheet(); });
+      });
+    }
+    renderSheet();
+  }
+
+  function closeSheet() {
+    document.getElementById('sheetHost').innerHTML = '';
+    scanLocked = false;
+  }
+
+  async function scanToProduct(id) {
+    let product = all.find((x) => x.id === id);
+    if (!product) product = await apiGet('/api/shop/products/' + id).catch(() => null);
+    if (product) openAddSheet(product);
+    else toast('Unknown QR code', true);
+  }
+
+  function startScanner() {
+    scanner = new Html5Qrcode('reader');
+    scanner
+      .start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: 220 },
+        (decodedText) => {
+          if (scanLocked) return;
+          const id = extractProductId(decodedText);
+          if (id) scanToProduct(id);
+        },
+        () => {}
+      )
+      .catch((err) => {
+        toast('Camera error: ' + err, true);
+        document.getElementById('scannerBox').style.display = 'none';
+      });
+  }
+
+  function stopScanner() {
+    if (scanner) { scanner.stop().then(() => scanner.clear()).catch(() => {}); scanner = null; }
+  }
+</script>

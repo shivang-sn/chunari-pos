@@ -1,0 +1,153 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Products - Chunari POS</title>
+<link rel="stylesheet" href="/css/style.css" />
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">C</div>
+    <div>
+      <span class="eyebrow">Catalog</span>
+      <h1>Products</h1>
+    </div>
+  </div>
+  <a class="icon-btn primary" href="/add-product.html" id="addIcon"></a>
+</header>
+
+<div class="container">
+  <div class="search-bar">
+    <span class="icon" id="searchIcon"></span>
+    <input type="text" id="search" placeholder="Search by title…" />
+  </div>
+  <div class="chip-row" id="catChips"></div>
+  <div class="scene-stack" id="grid"></div>
+  <div class="empty-state" id="empty" style="display:none;">
+    <div class="ic" id="emptyIcon"></div>
+    <div class="t">No products found</div>
+    <div class="d">Try a different search, or add a new one.</div>
+  </div>
+</div>
+
+<script src="/js/vendor/gsap.min.js"></script>
+<script src="/js/vendor/ScrollTrigger.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/icons.js"></script>
+<script src="/js/common.js"></script>
+<script>
+  renderBottomNav('products');
+  document.getElementById('addIcon').innerHTML = icon('plus', 19);
+  document.getElementById('searchIcon').innerHTML = icon('search', 18);
+  document.getElementById('emptyIcon').innerHTML = icon('search', 24);
+
+  const hasGsap = typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined';
+  if (hasGsap) gsap.registerPlugin(ScrollTrigger);
+  const canHover = window.matchMedia('(hover: hover)').matches;
+
+  let all = [];
+  let activeCat = 'All';
+
+  function renderChips() {
+    const counts = {};
+    all.forEach((p) => { counts[p.category || ''] = (counts[p.category || ''] || 0) + 1; });
+    const cats = [...new Set(all.map((p) => p.category).filter(Boolean))].sort();
+    if (!['All', ...cats].includes(activeCat)) activeCat = 'All';
+    const items = [{ key: 'All', label: 'All', count: all.length }, ...cats.map((c) => ({ key: c, label: c, count: counts[c] }))];
+    const wrap = document.getElementById('catChips');
+    wrap.innerHTML = items
+      .map((item) => `<button type="button" class="chip${item.key === activeCat ? ' active' : ''}" data-key="${item.key}">${item.label}<span class="n">${item.count}</span></button>`)
+      .join('');
+  }
+
+  document.getElementById('catChips').addEventListener('click', (e) => {
+    const btn = e.target.closest('.chip');
+    if (!btn) return;
+    activeCat = btn.dataset.key;
+    render();
+  });
+
+  function shortDesc(p) {
+    const parts = [];
+    if (p.category) parts.push(p.category);
+    if (p.isVariant && p.variantOptions) parts.push(p.variantOptions.map((o) => o.label).join(' / '));
+    else if (p.sizes) parts.push(p.sizes);
+    return parts.length ? parts.join(' · ') : 'No category set';
+  }
+
+  function render() {
+    renderChips();
+    const q = document.getElementById('search').value.trim().toLowerCase();
+    let filtered = q ? all.filter((p) => p.title.toLowerCase().includes(q)) : all;
+    if (activeCat !== 'All') filtered = filtered.filter((p) => p.category === activeCat);
+    const grid = document.getElementById('grid');
+    document.getElementById('empty').style.display = filtered.length ? 'none' : 'block';
+    grid.innerHTML = filtered
+      .map((p) => {
+        const chip = p.stockQty === 0 ? '<span class="stock-chip out">Out</span>' : p.stockQty <= 2 ? `<span class="stock-chip low">${p.stockQty} left</span>` : '';
+        const priceText = p.isVariant
+          ? `${fmtMoney(Math.min(...p.variantOptions.map((o) => o.sellingPrice)))}–${fmtMoney(Math.max(...p.variantOptions.map((o) => o.sellingPrice)))}`
+          : fmtMoney(p.sellingPrice);
+        return `<a class="scene-card" href="/product.html?id=${p.id}">
+          <div class="scene-img-wrap">
+            <img class="scene-img" src="${p.imageUrl || ''}" onerror="this.style.opacity=0" />
+            <div class="scene-fade"></div>
+            ${chip}
+          </div>
+          <div class="scene-body">
+            <p class="scene-title">${p.title}</p>
+            <p class="scene-desc">${icon('box', 13)}${shortDesc(p)}</p>
+            <div class="scene-price-row">
+              <span class="scene-price">${priceText}</span>
+              <span class="scene-stock">${p.stockQty} in stock</span>
+            </div>
+          </div>
+        </a>`;
+      })
+      .join('');
+    animateCards();
+  }
+
+  // ---- GSAP: reveal cards as they scroll into view, plus a subtle pointer tilt ----
+  function animateCards() {
+    const cards = document.querySelectorAll('.scene-card');
+    if (!hasGsap) return;
+    ScrollTrigger.getAll().forEach((st) => st.kill());
+    gsap.killTweensOf(cards);
+    gsap.set(cards, { opacity: 0, y: 46, scale: 0.94 });
+    ScrollTrigger.batch(cards, {
+      start: 'top 90%',
+      once: true,
+      onEnter: (batch) => gsap.to(batch, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: 'power3.out', stagger: 0.08, overwrite: true }),
+    });
+    requestAnimationFrame(() => ScrollTrigger.refresh());
+
+    if (canHover) {
+      cards.forEach((card) => {
+        const toX = gsap.quickTo(card, 'rotationY', { duration: 0.4, ease: 'power3.out' });
+        const toY = gsap.quickTo(card, 'rotationX', { duration: 0.4, ease: 'power3.out' });
+        card.addEventListener('mousemove', (e) => {
+          const r = card.getBoundingClientRect();
+          const px = (e.clientX - r.left) / r.width - 0.5;
+          const py = (e.clientY - r.top) / r.height - 0.5;
+          toX(px * 8);
+          toY(py * -8);
+        });
+        card.addEventListener('mouseleave', () => { toX(0); toY(0); });
+      });
+    }
+  }
+
+  async function load() {
+    all = await apiGet('/api/products');
+    render();
+  }
+
+  document.getElementById('search').addEventListener('input', render);
+  (async function init() {
+    const me = await requireOwnerPage();
+    if (!me) return;
+    load();
+  })();
+  socket.on('product:created', load);
+  socket.on('product:updated', load);
+  socket.on('product:deleted', load);
+</script>

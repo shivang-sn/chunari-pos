@@ -1,0 +1,198 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Settings - Chunari POS</title>
+<link rel="stylesheet" href="/css/style.css" />
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">C</div>
+    <div>
+      <span class="eyebrow">Manage</span>
+      <h1>Settings</h1>
+    </div>
+  </div>
+  <a class="icon-btn" href="/index.html" id="closeIcon"></a>
+</header>
+
+<div class="container">
+  <div class="section-head" style="margin-top:0;"><h2 id="hBusiness"></h2></div>
+  <div class="card" style="padding:16px;margin-bottom:8px;">
+    <label class="photo-drop" id="logoDrop" style="margin-bottom:16px;">
+      <input type="file" id="logoFile" accept="image/*" />
+      <div id="logoInner">
+        <div class="ph-icon" id="logoIcon"></div>
+        <div class="ph-text">Tap to upload shop logo</div>
+        <div class="ph-sub">Shown on your printed bills</div>
+      </div>
+    </label>
+
+    <div class="field"><label id="lblShop"></label><input type="text" id="shopName" placeholder="Shree Shrungar" /></div>
+    <div class="field"><label id="lblOwner"></label><input type="text" id="ownerName" placeholder="Owner's name" /></div>
+    <div class="field"><label id="lblPhone"></label><input type="tel" id="ownerPhone" placeholder="Phone number" /></div>
+    <div class="field"><label id="lblAddress"></label><input type="text" id="ownerAddress" placeholder="Shop address" /></div>
+    <button class="btn" id="saveBusinessBtn"></button>
+  </div>
+
+  <div class="section-head"><h2 id="hOffer"></h2></div>
+  <div class="card" style="padding:16px;margin-bottom:18px;">
+    <label class="checkbox-row" style="display:flex;align-items:center;gap:10px;margin:2px 0 14px;cursor:pointer;">
+      <input type="checkbox" id="offerEnabled" style="width:18px;height:18px;" />
+      <span style="font-weight:600;font-size:14px;">Show a festival offer to customers &amp; on the dashboard</span>
+    </label>
+    <div class="field"><label id="lblOfferLabel"></label><input type="text" id="offerLabel" placeholder="e.g. Diwali Dhamaka" /></div>
+    <div class="field"><label id="lblOfferPercent"></label><input type="number" id="offerPercent" min="0" max="100" step="0.5" placeholder="10" /></div>
+    <p style="color:var(--ink-faint);font-size:12.5px;line-height:1.6;margin:-6px 0 14px;">
+      When on, this shows as a banner to customers and on your dashboard. It must still be applied per bill at checkout — turning it on here doesn't discount sales automatically.
+    </p>
+    <button class="btn" id="saveOfferBtn"></button>
+  </div>
+
+  <div class="section-head"><h2 id="hNetwork"></h2></div>
+  <div class="card" style="padding:4px 16px;margin-bottom:18px;">
+    <div class="detail-row"><span class="k" id="ipLabel"></span><span class="v" id="ip">…</span></div>
+    <div class="detail-row"><span class="k">Port</span><span class="v" id="port">…</span></div>
+  </div>
+  <p style="color:var(--ink-faint);font-size:12.5px;line-height:1.6;margin-top:-10px;">
+    If your router assigns this computer a new IP address, update the base URL below and regenerate all QR codes.
+  </p>
+  <div class="field" style="margin-top:14px;">
+    <label>Base URL used for QR codes</label>
+    <input type="text" id="baseUrl" placeholder="http://192.168.1.5:3000" />
+  </div>
+  <button class="btn secondary" id="saveBtn"></button>
+  <button class="btn" id="regenBtn" style="margin-top:10px;"></button>
+
+  <div class="section-head"><h2 id="hSecurity"></h2></div>
+  <div class="card" style="padding:16px;margin-bottom:8px;">
+    <div class="field"><label id="lblCurrent"></label><input type="password" id="currentPasscode" placeholder="Current passcode" /></div>
+    <div class="field"><label id="lblNew"></label><input type="password" id="newPasscode" placeholder="New passcode (min 4 chars)" /></div>
+    <button class="btn dark" id="passBtn"></button>
+  </div>
+
+  <button class="btn ghost" id="logoutBtn" style="margin-top:8px;"></button>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/icons.js"></script>
+<script src="/js/common.js"></script>
+<script>
+  document.getElementById('closeIcon').innerHTML = icon('close', 18);
+  document.getElementById('hBusiness').innerHTML = icon('store', 16) + ' Business details';
+  document.getElementById('hNetwork').innerHTML = icon('wifi', 16) + ' Network';
+  document.getElementById('hSecurity').innerHTML = icon('lock', 16) + ' Security';
+  document.getElementById('logoIcon').innerHTML = icon('camera', 20);
+  document.getElementById('lblShop').innerHTML = icon('store', 13) + ' Shop name';
+  document.getElementById('lblOwner').innerHTML = icon('user', 13) + ' Owner name';
+  document.getElementById('lblPhone').innerHTML = icon('phone', 13) + ' Owner phone';
+  document.getElementById('lblAddress').innerHTML = icon('mapPin', 13) + ' Shop address';
+  document.getElementById('saveBusinessBtn').innerHTML = icon('check', 17) + 'Save Business Details';
+  document.getElementById('hOffer').innerHTML = icon('sparkle', 16) + ' Festival Offer';
+  document.getElementById('lblOfferLabel').innerHTML = icon('sparkle', 13) + ' Offer name';
+  document.getElementById('lblOfferPercent').innerHTML = icon('barChart', 13) + ' Discount %';
+  document.getElementById('saveOfferBtn').innerHTML = icon('check', 17) + 'Save Offer';
+  document.getElementById('ipLabel').innerHTML = icon('wifi', 15) + ' Local network IP';
+  document.getElementById('saveBtn').innerHTML = icon('check', 17) + 'Save Base URL';
+  document.getElementById('regenBtn').innerHTML = icon('refresh', 17) + 'Regenerate All QR Codes';
+  document.getElementById('lblCurrent').innerHTML = 'Current passcode';
+  document.getElementById('lblNew').innerHTML = 'New passcode';
+  document.getElementById('passBtn').innerHTML = icon('lock', 17) + 'Change Passcode';
+  document.getElementById('logoutBtn').innerHTML = icon('logOut', 17) + 'Log Out';
+
+  async function load() {
+    const s = await apiGet('/api/settings');
+    document.getElementById('ip').textContent = s.localIp;
+    document.getElementById('port').textContent = s.port;
+    document.getElementById('baseUrl').value = s.baseUrl;
+    document.getElementById('shopName').value = s.shopName;
+    document.getElementById('ownerName').value = s.ownerName;
+    document.getElementById('ownerPhone').value = s.ownerPhone;
+    document.getElementById('ownerAddress').value = s.ownerAddress;
+    document.getElementById('offerEnabled').checked = s.offer.enabled;
+    document.getElementById('offerLabel').value = s.offer.label;
+    document.getElementById('offerPercent').value = s.offer.percent;
+    if (s.shopLogoUrl) {
+      document.getElementById('logoDrop').classList.add('has-image');
+      document.getElementById('logoInner').outerHTML = `<img id="logoInner" src="${s.shopLogoUrl}" />`;
+    }
+  }
+
+  document.getElementById('logoFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('logo', file);
+    try {
+      await apiSend('/api/settings/logo', 'POST', fd, true);
+      toast('Logo updated');
+      load();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  document.getElementById('saveBusinessBtn').addEventListener('click', async () => {
+    try {
+      await apiSend('/api/settings/business', 'POST', {
+        shopName: document.getElementById('shopName').value.trim(),
+        ownerName: document.getElementById('ownerName').value.trim(),
+        ownerPhone: document.getElementById('ownerPhone').value.trim(),
+        ownerAddress: document.getElementById('ownerAddress').value.trim(),
+      });
+      toast('Business details saved');
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  document.getElementById('saveOfferBtn').addEventListener('click', async () => {
+    try {
+      await apiSend('/api/settings/offer', 'POST', {
+        enabled: document.getElementById('offerEnabled').checked,
+        percent: document.getElementById('offerPercent').value || 0,
+        label: document.getElementById('offerLabel').value.trim(),
+      });
+      toast('Offer saved');
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  document.getElementById('saveBtn').addEventListener('click', async () => {
+    const baseUrl = document.getElementById('baseUrl').value.trim();
+    if (!baseUrl) return;
+    await apiSend('/api/settings/base-url', 'POST', { baseUrl });
+    toast('Saved. Regenerate QR codes to apply.');
+  });
+
+  document.getElementById('regenBtn').addEventListener('click', async () => {
+    if (!confirm('Regenerate QR codes for all products using the current base URL? Old printed QR codes will stop working.')) return;
+    const res = await apiSend('/api/settings/regenerate-all-qr', 'POST', {});
+    toast(`Regenerated ${res.regenerated} QR codes`);
+  });
+
+  document.getElementById('passBtn').addEventListener('click', async () => {
+    const currentPasscode = document.getElementById('currentPasscode').value;
+    const newPasscode = document.getElementById('newPasscode').value;
+    if (!currentPasscode || !newPasscode) return;
+    try {
+      await apiSend('/api/settings/passcode', 'POST', { currentPasscode, newPasscode });
+      toast('Passcode changed');
+      document.getElementById('currentPasscode').value = '';
+      document.getElementById('newPasscode').value = '';
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await apiSend('/api/auth/logout', 'POST', {});
+    location.href = '/login.html';
+  });
+
+  (async function init() {
+    const me = await requireOwnerPage();
+    if (!me) return;
+    renderBottomNav('home');
+    load();
+  })();
+</script>

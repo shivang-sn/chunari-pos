@@ -1,0 +1,203 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Analysis - Chunari POS</title>
+<link rel="stylesheet" href="/css/style.css" />
+<style>
+  .range-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .range-tab {
+    flex: 1; text-align: center; padding: 10px 6px; border: 1.5px solid var(--border); background: var(--surface);
+    border-radius: var(--radius-pill); font-family: var(--font-body); font-size: 13.5px; font-weight: 700; color: var(--ink-soft);
+    cursor: pointer; transition: background .18s ease, color .18s ease, border-color .18s ease;
+  }
+  .range-tab.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+  .analysis-tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 18px; }
+  @media (min-width: 560px) { .analysis-tiles { grid-template-columns: repeat(4, 1fr); } }
+  .a-tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; box-shadow: var(--shadow-sm); }
+  .a-tile .ic { width: 32px; height: 32px; border-radius: 10px; background: var(--primary-soft); color: var(--primary-dark); display: flex; align-items: center; justify-content: center; margin-bottom: 8px; }
+  .a-tile.alt .ic { background: var(--accent-soft); color: var(--accent); }
+  .a-tile.profit .ic { background: var(--success-soft); color: var(--success); }
+  .a-tile.loss .ic { background: var(--danger-soft); color: var(--danger); }
+  .a-tile .label { font-size: 11.5px; color: var(--ink-faint); font-weight: 600; }
+  .a-tile .value { font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--ink); margin-top: 2px; }
+  .a-tile.profit .value { color: var(--success); }
+  .a-tile.loss .value { color: var(--danger); }
+
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 16px; box-shadow: var(--shadow-sm); margin-bottom: 18px; overflow-x: auto;
+  }
+  .chart-empty { color: var(--ink-faint); font-size: 13px; text-align: center; padding: 30px 0; }
+
+  .analysis-table-wrap {
+    overflow: auto; max-height: 480px; border: 1px solid var(--border); border-radius: var(--radius-lg);
+    background: var(--surface); box-shadow: var(--shadow-sm);
+  }
+  table.analysis-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.analysis-table th {
+    position: sticky; top: 0; background: var(--surface); text-align: left; font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--ink-faint); padding: 10px 14px; border-bottom: 1.5px solid var(--border-strong); white-space: nowrap;
+  }
+  table.analysis-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.analysis-table tr:last-child td { border-bottom: none; }
+  table.analysis-table .num { text-align: right; font-weight: 700; }
+  table.analysis-table .profit-pos { color: var(--success); }
+  table.analysis-table .profit-neg { color: var(--danger); }
+  table.analysis-table tr.today-row td { background: var(--primary-softer); }
+</style>
+
+<header class="topbar">
+  <a class="icon-btn" href="/index.html" id="backIcon"></a>
+  <div>
+    <span class="eyebrow" style="display:block;text-align:center;">Reports</span>
+    <h1 style="font-size:17px;">Analysis</h1>
+  </div>
+  <span style="width:40px;"></span>
+</header>
+
+<div class="container">
+  <div class="range-tabs" id="rangeTabs">
+    <button type="button" class="range-tab active" data-range="month">Monthly</button>
+    <button type="button" class="range-tab" data-range="quarter">Quarterly</button>
+    <button type="button" class="range-tab" data-range="year">Yearly</button>
+  </div>
+
+  <div class="analysis-tiles">
+    <div class="a-tile">
+      <div class="ic" id="icCollection"></div>
+      <div class="label">Total Collection</div>
+      <div class="value" id="totalCollection">···</div>
+    </div>
+    <div class="a-tile alt">
+      <div class="ic" id="icBills"></div>
+      <div class="label">Total Bills</div>
+      <div class="value" id="totalBills">···</div>
+    </div>
+    <div class="a-tile">
+      <div class="ic" id="icExpense"></div>
+      <div class="label">Restock Expense</div>
+      <div class="value" id="totalExpense">···</div>
+    </div>
+    <div class="a-tile profit" id="profitTile">
+      <div class="ic" id="icProfit"></div>
+      <div class="label" id="profitLossLabel">Total Profit</div>
+      <div class="value" id="totalProfitLoss">···</div>
+    </div>
+  </div>
+
+  <div class="section-head" style="margin-top:0;"><h2 id="chartHead">Sales chart</h2></div>
+  <div class="chart-card" id="chartCard"></div>
+
+  <div class="section-head"><h2>Day by day</h2><span class="count" id="rangeLabel"></span></div>
+  <div class="analysis-table-wrap">
+    <table class="analysis-table">
+      <thead><tr><th>Date</th><th class="num">Bills</th><th class="num">Collection</th><th class="num">Expense</th><th class="num">Profit / Loss</th></tr></thead>
+      <tbody id="analysisTableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/icons.js"></script>
+<script src="/js/common.js"></script>
+<script>
+  renderBottomNav('bills');
+  document.getElementById('backIcon').innerHTML = icon('chevronLeft', 19);
+  document.getElementById('icCollection').innerHTML = icon('barChart', 16);
+  document.getElementById('icBills').innerHTML = icon('receipt', 16);
+  document.getElementById('icExpense').innerHTML = icon('bag', 16);
+  document.getElementById('icProfit').innerHTML = icon('sparkle', 16);
+
+  let range = 'month';
+
+  document.getElementById('rangeTabs').addEventListener('click', (e) => {
+    const btn = e.target.closest('.range-tab');
+    if (!btn) return;
+    range = btn.dataset.range;
+    document.querySelectorAll('.range-tab').forEach((el) => el.classList.toggle('active', el === btn));
+    load();
+  });
+
+  function fmtDay(dateStr) {
+    const dt = new Date(dateStr + 'T00:00:00Z');
+    return dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  }
+
+  function buildChart(daily) {
+    const card = document.getElementById('chartCard');
+    const withSales = daily.filter((d) => d.revenue > 0 || d.bills > 0);
+    if (!daily.length || !withSales.length) {
+      card.innerHTML = '<div class="chart-empty">No sales in this period yet.</div>';
+      return;
+    }
+    const barW = 14;
+    const gap = 10;
+    const h = 170;
+    const padBottom = 26;
+    const w = Math.max(daily.length * (barW + gap) + gap, 320);
+    const max = Math.max(1, ...daily.map((d) => d.revenue));
+    const labelEvery = Math.max(1, Math.ceil(daily.length / 10));
+
+    let svg = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="display:block;">`;
+    svg += `<line x1="0" y1="${h - padBottom}" x2="${w}" y2="${h - padBottom}" stroke="var(--border-strong)" stroke-width="1"/>`;
+    daily.forEach((d, i) => {
+      const x = i * (barW + gap) + gap / 2;
+      const bh = Math.round((d.revenue / max) * (h - padBottom - 14));
+      const y = h - padBottom - bh;
+      const isToday = d.date === new Date().toISOString().slice(0, 10);
+      svg += `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(bh, d.revenue > 0 ? 2 : 0)}" rx="3" style="fill:${isToday ? 'var(--accent)' : 'var(--primary)'};opacity:${d.revenue > 0 ? '0.92' : '0.18'};"><title>${fmtDay(d.date)}: ${fmtMoney(d.revenue)} · ${d.bills} bill${d.bills === 1 ? '' : 's'}</title></rect>`;
+      if (i % labelEvery === 0 || i === daily.length - 1) {
+        svg += `<text x="${x + barW / 2}" y="${h - 8}" font-size="9" text-anchor="middle" style="fill:var(--ink-faint);font-family:var(--font-body);">${fmtDay(d.date).replace(' ', '')}</text>`;
+      }
+    });
+    svg += `</svg>`;
+    card.innerHTML = svg;
+  }
+
+  function renderTable(daily) {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    document.getElementById('analysisTableBody').innerHTML = daily
+      .slice()
+      .reverse()
+      .map((d) => {
+        const profitClass = d.profit > 0 ? 'profit-pos' : d.profit < 0 ? 'profit-neg' : '';
+        return `<tr class="${d.date === todayStr ? 'today-row' : ''}">
+          <td>${fmtDay(d.date)}</td>
+          <td class="num">${d.bills}</td>
+          <td class="num">${fmtMoney(d.revenue)}</td>
+          <td class="num">${fmtMoney(d.expense)}</td>
+          <td class="num ${profitClass}">${fmtMoney(d.profit)}</td>
+        </tr>`;
+      })
+      .join('');
+  }
+
+  async function load() {
+    const data = await apiGet('/api/bills/summary/analysis?range=' + range);
+    document.getElementById('totalCollection').textContent = fmtMoney(data.totals.revenue);
+    document.getElementById('totalBills').textContent = data.totals.bills;
+    document.getElementById('totalExpense').textContent = fmtMoney(data.totals.expense);
+
+    const isLoss = data.totals.profit < 0;
+    document.getElementById('profitTile').className = 'a-tile ' + (isLoss ? 'loss' : 'profit');
+    document.getElementById('profitLossLabel').textContent = isLoss ? 'Total Loss' : 'Total Profit';
+    document.getElementById('totalProfitLoss').textContent = fmtMoney(Math.abs(data.totals.profit));
+
+    const rangeText = { month: 'This month', quarter: 'This quarter', year: 'This year' }[range];
+    document.getElementById('chartHead').textContent = `Sales chart · ${rangeText}`;
+    document.getElementById('rangeLabel').textContent = `${fmtDay(data.startDate)} – ${fmtDay(data.endDate)}`;
+
+    buildChart(data.daily);
+    renderTable(data.daily);
+  }
+
+  (async function init() {
+    const me = await requireOwnerPage();
+    if (!me) return;
+    enableOrderChime();
+    load();
+  })();
+
+  socket.on('bill:created', load);
+  socket.on('bill:updated', load);
+</script>

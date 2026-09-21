@@ -1,0 +1,223 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Your Cart - Chunari</title>
+<link rel="stylesheet" href="/css/style.css" />
+<style>.container { padding-bottom: 200px; }</style>
+
+<header class="topbar">
+  <a class="icon-btn" href="/shop.html" id="backIcon"></a>
+  <h1 style="font-size:17px;">Your Cart</h1>
+  <span style="width:40px;"></span>
+</header>
+
+<div class="container" id="cartView">
+  <div id="cartList"></div>
+  <div class="empty-state" id="cartEmpty" style="display:none;">
+    <div class="ic" id="emptyIcon"></div>
+    <div class="t">Your cart is empty</div>
+    <div class="d">Browse the shop and add items you like.</div>
+    <a class="btn" href="/shop.html" style="margin-top:16px;max-width:220px;">Go to Shop</a>
+  </div>
+
+  <div id="detailsSection" style="display:none;">
+    <div class="section-head"><h2 id="detailsHead"></h2></div>
+    <div class="field">
+      <label id="lblName"></label>
+      <input type="text" id="custName" placeholder="Your name" />
+    </div>
+    <div class="row">
+      <div class="field">
+        <label id="lblMobile"></label>
+        <input type="tel" id="custMobile" placeholder="10-digit mobile" />
+      </div>
+      <div class="field">
+        <label id="lblEmail"></label>
+        <input type="email" id="custEmail" placeholder="you@example.com" />
+      </div>
+    </div>
+    <div class="field">
+      <label id="lblAddress"></label>
+      <input type="text" id="custAddress" placeholder="Delivery / pickup address" />
+    </div>
+  </div>
+
+  <div class="card" style="padding:14px 16px;margin-top:4px;display:none;" id="offerCard">
+    <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;gap:10px;">
+      <span style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;" id="offerCheckLabel"></span>
+      <input type="checkbox" id="applyOffer" style="width:18px;height:18px;flex-shrink:0;" />
+    </label>
+  </div>
+</div>
+
+<div class="sticky-bar" id="totalsBox" style="display:none;">
+  <div style="flex:1;">
+    <div style="font-size:11px;color:var(--ink-faint);font-weight:700;">TOTAL</div>
+    <div id="discountLine" style="font-size:11px;color:var(--success);font-weight:700;display:none;"></div>
+    <div id="totalAmt" style="font-family:var(--font-display);font-size:19px;font-weight:600;color:var(--primary-dark);"></div>
+  </div>
+  <button class="btn" id="placeBtn" style="flex:1.4;"></button>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/icons.js"></script>
+<script src="/js/common.js"></script>
+<script>
+  renderBottomNav('cart', 'customer');
+  document.getElementById('backIcon').innerHTML = icon('chevronLeft', 19);
+  document.getElementById('emptyIcon').innerHTML = icon('bag', 24);
+  document.getElementById('detailsHead').innerHTML = icon('user', 16) + ' Your details';
+  document.getElementById('lblName').innerHTML = icon('user', 13) + ' Name';
+  document.getElementById('lblMobile').innerHTML = icon('phone', 13) + ' Mobile';
+  document.getElementById('lblEmail').innerHTML = icon('mail', 13) + ' Email (optional)';
+  document.getElementById('lblAddress').innerHTML = icon('mapPin', 13) + ' Address (optional)';
+  document.getElementById('placeBtn').innerHTML = icon('check', 18) + 'Place Order';
+
+  let products = [];
+  let offer = null;
+  let applyOfferChecked = false;
+
+  async function load() {
+    products = await apiGet('/api/shop/products');
+    render();
+  }
+
+  async function loadOffer() {
+    const info = await apiGet('/api/shop/info');
+    offer = info.offer;
+    const card = document.getElementById('offerCard');
+    if (offer && offer.enabled && offer.percent > 0) {
+      card.style.display = 'block';
+      document.getElementById('offerCheckLabel').innerHTML = `${icon('sparkle', 15)} Apply ${offer.label} — ${offer.percent}% off`;
+    } else {
+      card.style.display = 'none';
+      applyOfferChecked = false;
+    }
+    render();
+  }
+  document.getElementById('applyOffer').addEventListener('change', (e) => {
+    applyOfferChecked = e.target.checked;
+    render();
+  });
+
+  function parseKey(key) {
+    const [productId, size] = key.split('::');
+    return { productId, size: size || '' };
+  }
+
+  function entryFor(key, qty) {
+    const { productId, size } = parseKey(key);
+    const product = products.find((p) => p.id === productId);
+    if (!product) return null;
+    const opt = product.isVariant ? product.variantOptions.find((o) => o.key === size) : null;
+    if (product.isVariant && !opt) return null;
+    return {
+      key, product, size, qty,
+      label: opt ? opt.label : product.title,
+      sellingPrice: opt ? opt.sellingPrice : product.sellingPrice,
+      stockQty: opt ? opt.stockQty : product.stockQty,
+    };
+  }
+
+  function render() {
+    const cart = getCart();
+    const entries = Object.keys(cart)
+      .filter((key) => cart[key] > 0)
+      .map((key) => entryFor(key, cart[key]))
+      .filter(Boolean);
+
+    const hasItems = entries.length > 0;
+    document.getElementById('cartEmpty').style.display = hasItems ? 'none' : 'block';
+    document.getElementById('detailsSection').style.display = hasItems ? 'block' : 'none';
+    document.getElementById('totalsBox').style.display = hasItems ? 'flex' : 'none';
+    const offerActive = !!(offer && offer.enabled && offer.percent > 0);
+    document.getElementById('offerCard').style.display = hasItems && offerActive ? 'block' : 'none';
+
+    let subtotal = 0;
+    document.getElementById('cartList').innerHTML = entries
+      .map((e) => {
+        const lineTotal = e.sellingPrice * e.qty;
+        subtotal += lineTotal;
+        const maxed = e.qty >= e.stockQty;
+        return `<div class="cart-item">
+          <img src="${e.product.imageUrl || ''}" onerror="this.style.opacity=0" />
+          <div class="info">
+            <div class="t">${e.product.title}${e.size ? ` <span style="color:var(--ink-faint);font-weight:400;">· ${e.label}</span>` : ''}</div>
+            <div class="p">${fmtMoney(e.sellingPrice)} × ${e.qty} = ${fmtMoney(lineTotal)}</div>
+          </div>
+          <div class="qty-control">
+            <button onclick="changeQty('${e.key}', -1)">${icon('minus', 14)}</button>
+            <span>${e.qty}</span>
+            <button onclick="changeQty('${e.key}', 1)" ${maxed ? 'disabled style="opacity:.4"' : ''}>${icon('plus', 14)}</button>
+          </div>
+        </div>`;
+      })
+      .join('');
+
+    const useDiscount = applyOfferChecked && offerActive;
+    const discountAmt = useDiscount ? Math.round(subtotal * offer.percent) / 100 : 0;
+    const discountLine = document.getElementById('discountLine');
+    if (useDiscount) {
+      discountLine.style.display = 'block';
+      discountLine.textContent = `${fmtMoney(subtotal)} − ${offer.percent}% off = -${fmtMoney(discountAmt)}`;
+    } else {
+      discountLine.style.display = 'none';
+    }
+    document.getElementById('totalAmt').textContent = fmtMoney(subtotal - discountAmt);
+  }
+
+  window.changeQty = function (key, delta) {
+    const cart = getCart();
+    const entry = entryFor(key, cart[key] || 0);
+    let next = (cart[key] || 0) + delta;
+    if (entry && next > entry.stockQty) next = entry.stockQty;
+    if (next <= 0) delete cart[key];
+    else cart[key] = next;
+    saveCart(cart);
+    render();
+  };
+
+  document.getElementById('placeBtn').addEventListener('click', async () => {
+    const cart = getCart();
+    const items = Object.keys(cart).filter((key) => cart[key] > 0).map((key) => {
+      const { productId, size } = parseKey(key);
+      return { productId, size, qty: cart[key] };
+    });
+    if (!items.length) { toast('Your cart is empty', true); return; }
+
+    const name = document.getElementById('custName').value.trim();
+    if (!name) { toast('Please enter your name', true); document.getElementById('custName').focus(); return; }
+
+    const btn = document.getElementById('placeBtn');
+    btn.disabled = true;
+    try {
+      const bill = await apiSend('/api/bills', 'POST', {
+        items,
+        customer: {
+          name,
+          mobile: document.getElementById('custMobile').value.trim(),
+          email: document.getElementById('custEmail').value.trim(),
+          address: document.getElementById('custAddress').value.trim(),
+        },
+        applyDiscount: applyOfferChecked,
+      });
+      saveCart({});
+      document.getElementById('cartView').innerHTML = `
+        <div class="empty-state">
+          <div class="ic" style="background:var(--success-soft);color:var(--success);">${icon('checkCircle', 26)}</div>
+          <div class="t">Order placed! ${fmtBillNo(bill.billNo)}</div>
+          <div class="d">Show this to the shop owner to collect your order and pay.</div>
+          <a class="btn" href="/bill.html?id=${bill.id}" style="margin-top:18px;max-width:260px;">${icon('receipt',17)} View Order</a>
+          <a class="btn secondary" href="/shop.html" style="margin-top:10px;max-width:260px;">Continue Shopping</a>
+        </div>`;
+      document.getElementById('totalsBox').style.display = 'none';
+    } catch (err) {
+      toast(err.message, true);
+      btn.disabled = false;
+    }
+  });
+
+  load();
+  loadOffer();
+  socket.on('product:updated', load);
+  socket.on('offer:updated', loadOffer);
+</script>

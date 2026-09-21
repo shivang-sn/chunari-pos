@@ -1,0 +1,139 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Bills - Chunari POS</title>
+<link rel="stylesheet" href="/css/style.css" />
+<style>
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; overflow-x: auto; }
+  .tab-btn {
+    padding: 9px 15px; border-radius: var(--radius-pill); border: 1.5px solid var(--border);
+    background: var(--surface); color: var(--ink-soft); font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  }
+  .tab-btn.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .bill-row { display: flex; align-items: center; gap: 12px; }
+  .bill-row .lead { flex: 1; min-width: 0; }
+  .bill-row .name { font-weight: 700; font-size: 14px; }
+  .bill-row .sub { font-size: 12px; color: var(--ink-faint); margin-top: 2px; }
+  .bill-actions { display: flex; gap: 6px; margin-top: 10px; }
+</style>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">C</div>
+    <div><span class="eyebrow">Reports</span><h1>Bills</h1></div>
+  </div>
+  <a class="icon-btn" href="/analysis.html" id="analysisIcon"></a>
+</header>
+
+<div class="container">
+  <div class="stat-grid" id="stats">
+    <div class="stat-card"><div class="ic" data-icon="barChart"></div><div class="label">Recent Revenue</div><div class="value">···</div></div>
+    <div class="stat-card alt"><div class="ic" data-icon="sparkle"></div><div class="label">Recent Profit</div><div class="value">···</div></div>
+    <div class="stat-card"><div class="ic" data-icon="creditCard"></div><div class="label">Awaiting Collection</div><div class="value">···</div></div>
+    <div class="stat-card alt"><div class="ic" data-icon="receipt"></div><div class="label">All-time Revenue</div><div class="value">···</div></div>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+  <div id="list"></div>
+  <div class="empty-state" id="empty" style="display:none;">
+    <div class="ic" id="emptyIcon"></div>
+    <div class="t">No bills here yet</div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/icons.js"></script>
+<script src="/js/common.js"></script>
+<script>
+  renderBottomNav('bills');
+  document.getElementById('analysisIcon').innerHTML = icon('barChart', 18);
+  document.querySelectorAll('#stats .ic').forEach((el) => { el.innerHTML = icon(el.dataset.icon, 17); });
+  document.getElementById('emptyIcon').innerHTML = icon('receipt', 24);
+
+  let allBills = [];
+  let filter = 'pending';
+
+  const TABS = [
+    { key: 'pending', label: 'Pending' },
+    { key: 'paid', label: 'Paid' },
+    { key: 'all', label: 'All' },
+    { key: 'cancelled', label: 'Cancelled' },
+  ];
+  document.getElementById('tabs').innerHTML = TABS.map((t) => `<button class="tab-btn" data-key="${t.key}">${t.label}</button>`).join('');
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => { filter = btn.dataset.key; renderTabs(); render(); });
+  });
+  function renderTabs() {
+    document.querySelectorAll('.tab-btn').forEach((btn) => btn.classList.toggle('active', btn.dataset.key === filter));
+  }
+  renderTabs();
+
+  function statusBadge(status) {
+    if (status === 'paid') return `<span class="badge success">${icon('checkCircle',11)} Paid</span>`;
+    if (status === 'cancelled') return `<span class="badge">${icon('xCircle',11)} Cancelled</span>`;
+    return `<span class="badge accent">${icon('alert',11)} Pending</span>`;
+  }
+
+  function render() {
+    const filtered = filter === 'all' ? allBills : allBills.filter((b) => b.status === filter);
+    document.getElementById('empty').style.display = filtered.length ? 'none' : 'block';
+    document.getElementById('list').innerHTML = filtered
+      .map((b) => {
+        const dt = new Date(b.createdAt);
+        const itemsText = b.items.map((i) => `${i.title} ×${i.qty}`).join(', ');
+        let actions = `<a class="btn small secondary" href="/bill.html?id=${b.id}">${icon('receipt',14)} View / PDF</a>`;
+        if (b.status === 'pending') {
+          actions += `<button class="btn small dark" onclick="collect('${b.id}')">${icon('creditCard',14)} Collect</button>`;
+          actions += `<button class="btn small danger" onclick="cancelBill('${b.id}')">${icon('xCircle',14)} Cancel</button>`;
+        }
+        return `<div class="sale-card">
+          <div class="bill-row">
+            <div class="lead">
+              <div class="name">${fmtBillNo(b.billNo)} · ${b.customer.name || 'Walk-in'}</div>
+              <div class="sub">${dt.toLocaleDateString()} ${dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${b.createdBy === 'customer' ? 'Customer order' : 'In-store'}</div>
+            </div>
+            <div style="text-align:right;">
+              <div class="amt">${fmtMoney(b.totalAmount)}</div>
+              ${statusBadge(b.status)}
+            </div>
+          </div>
+          <div class="items" style="margin-top:8px;">${itemsText}</div>
+          <div class="bill-actions">${actions}</div>
+        </div>`;
+      })
+      .join('');
+  }
+
+  window.collect = async function (id) {
+    try { await apiSend('/api/bills/' + id + '/collect', 'PATCH', {}); toast('Payment collected'); } catch (e) { toast(e.message, true); }
+  };
+  window.cancelBill = async function (id) {
+    if (!confirm('Cancel this bill and restock its items?')) return;
+    try { await apiSend('/api/bills/' + id + '/cancel', 'PATCH', {}); toast('Bill cancelled'); } catch (e) { toast(e.message, true); }
+  };
+
+  async function loadStats() {
+    const s = await apiGet('/api/bills/summary/stats');
+    const cards = document.querySelectorAll('#stats .stat-card .value');
+    cards[0].textContent = fmtMoney(s.recentRevenue);
+    cards[1].textContent = fmtMoney(s.recentProfit);
+    cards[2].textContent = s.pendingCount ? `${s.pendingCount} · ${fmtMoney(s.pendingAmount)}` : '0';
+    cards[3].textContent = fmtMoney(s.allTimeRevenue);
+  }
+
+  async function loadBills() {
+    allBills = await apiGet('/api/bills');
+    render();
+  }
+
+  (async function init() {
+    const me = await requireOwnerPage();
+    if (!me) return;
+    enableOrderChime();
+    loadStats();
+    loadBills();
+  })();
+
+  socket.on('bill:created', () => { loadStats(); loadBills(); });
+  socket.on('bill:updated', () => { loadStats(); loadBills(); });
+  socket.on('product:updated', loadStats);
+</script>

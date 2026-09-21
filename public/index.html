@@ -1,0 +1,378 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Chunari POS</title>
+<link rel="stylesheet" href="/css/style.css" />
+<style>
+  .pending-alert {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--accent-soft); border: 1.5px solid var(--accent);
+    border-radius: var(--radius-lg); padding: 14px 16px; margin-bottom: 18px;
+  }
+  .pending-alert .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .pending-alert .t { font-weight: 700; font-size: 14px; color: var(--ink); }
+  .pending-alert .d { font-size: 12px; color: var(--ink-soft); }
+
+  .period-tabs { display: flex; gap: 6px; background: var(--surface-sunk); border-radius: var(--radius-pill); padding: 4px; margin-bottom: 14px; }
+  .period-tab {
+    flex: 1; text-align: center; padding: 8px 6px; border: none; background: none; cursor: pointer;
+    border-radius: var(--radius-pill); font-family: var(--font-body); font-size: 13px; font-weight: 700; color: var(--ink-soft);
+    transition: background .18s ease, color .18s ease;
+  }
+  .period-tab.active { background: var(--surface); color: var(--primary-dark); box-shadow: var(--shadow-sm); }
+
+  /* ---------- Bento dashboard grid ---------- */
+  .bento-grid > * { margin-top: 14px; }
+  .bento-grid > *:first-child { margin-top: 0; }
+  @media (min-width: 900px) {
+    .bento-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-areas:
+        "s1 s1 s2 s3"
+        "s1 s1 s4 s4"
+        "actions actions actions actions"
+        "billing billing billing restock"
+        "billing billing billing restock";
+      gap: 16px;
+    }
+    .bento-grid > * { margin-top: 0; }
+    .bento-s1 { grid-area: s1; }
+    .bento-s2 { grid-area: s2; }
+    .bento-s3 { grid-area: s3; }
+    .bento-s4 { grid-area: s4; }
+    .bento-actions { grid-area: actions; }
+    .bento-billing { grid-area: billing; }
+    .bento-restock { grid-area: restock; }
+  }
+
+  .bento-tile {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 16px 18px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; justify-content: center;
+  }
+  .bento-tile.alt { background: var(--primary-softer); }
+  .bento-tile .tile-ic {
+    width: 34px; height: 34px; border-radius: 10px; background: var(--primary-soft); color: var(--primary-dark);
+    display: flex; align-items: center; justify-content: center; margin-bottom: 10px; flex-shrink: 0;
+  }
+  .bento-tile.alt .tile-ic { background: var(--accent-soft); color: var(--accent); }
+  .bento-tile .tile-label { font-size: 12.5px; color: var(--ink-faint); font-weight: 600; }
+  .bento-tile .tile-value { font-family: var(--font-display); font-weight: 700; color: var(--ink); margin-top: 2px; }
+
+  .bento-s1.bento-tile { justify-content: flex-start; }
+  .bento-s1 .tile-value { font-size: 32px; color: var(--primary-dark); }
+  .bento-s2 .tile-value, .bento-s3 .tile-value { font-size: 21px; }
+  .bento-s4.bento-tile { flex-direction: row; align-items: center; gap: 14px; }
+  .bento-s4 .tile-ic { margin-bottom: 0; }
+  .bento-s4 .tile-value { margin-top: 0; font-size: 21px; }
+
+  .bento-actions { display: flex; gap: 12px; }
+  .bento-actions .btn { margin: 0; }
+
+  .bento-billing .section-head { margin-top: 0; }
+
+  .bento-restock {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 14px; box-shadow: var(--shadow-sm);
+  }
+  .low-stock-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
+    max-height: 380px; overflow-y: auto; padding-right: 2px;
+  }
+  .low-stock-grid .product-card .title { font-size: 12px; }
+  .low-stock-grid .product-card .body { padding: 8px 9px 10px; }
+
+  /* ---------- Daily billing table ---------- */
+  .billing-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm); }
+  table.billing-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.billing-table th {
+    text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-faint);
+    padding: 10px 14px; border-bottom: 1.5px solid var(--border-strong); white-space: nowrap;
+  }
+  table.billing-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.billing-table tr:last-child td { border-bottom: none; }
+  table.billing-table .num { text-align: right; font-weight: 700; color: var(--ink); }
+  table.billing-table .bill-no { color: var(--ink-faint); font-weight: 600; }
+  table.billing-table .status-chip { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: var(--radius-pill); font-size: 10px; font-weight: 700; vertical-align: middle; }
+  table.billing-table .status-chip.paid { background: var(--success-soft); color: var(--success); }
+  table.billing-table .status-chip.pending { background: var(--accent-soft); color: var(--accent); }
+  table.billing-table .status-chip.cancelled { background: var(--surface-sunk); color: var(--ink-faint); }
+</style>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">C</div>
+    <div>
+      <span class="eyebrow">Chunari</span>
+      <h1>Dashboard</h1>
+    </div>
+  </div>
+  <a class="icon-btn" href="/settings.html" id="settingsIcon"></a>
+</header>
+
+<div class="container">
+  <div class="hero">
+    <span class="eyebrow" id="heroGreeting">Good Morning</span>
+    <h2 id="heroLine">Have a great day!</h2>
+    <p id="heroOffer"></p>
+  </div>
+
+  <a class="offer-banner" href="/settings.html" id="offerBanner" style="display:none;">
+    <div class="badge" id="offerBadge"></div>
+    <div>
+      <div class="t" id="offerTitle"></div>
+      <div class="d">Apply it per bill during billing</div>
+    </div>
+  </a>
+
+  <a class="pending-alert" href="/bills.html" id="pendingAlert" style="display:none;">
+    <div class="ic"></div>
+    <div>
+      <div class="t" id="pendingTitle"></div>
+      <div class="d">Tap to review and collect payment</div>
+    </div>
+  </a>
+
+  <div class="bento-grid">
+    <div class="bento-tile bento-s1">
+      <div class="period-tabs" id="periodTabs">
+        <button type="button" class="period-tab active" data-period="recent">Recent</button>
+        <button type="button" class="period-tab" data-period="week">This Week</button>
+        <button type="button" class="period-tab" data-period="month">This Month</button>
+      </div>
+      <div class="tile-ic" data-icon="receipt"></div>
+      <div class="tile-label" id="salesLabel">Recent Sales</div>
+      <div class="tile-value" id="salesValue">···</div>
+    </div>
+
+    <div class="bento-tile alt bento-s2">
+      <div class="tile-ic" data-icon="sparkle"></div>
+      <div class="tile-label" id="profitLabel">Recent Profit</div>
+      <div class="tile-value" id="profitValue">···</div>
+    </div>
+
+    <div class="bento-tile bento-s3">
+      <div class="tile-ic" data-icon="box"></div>
+      <div class="tile-label">Total Products</div>
+      <div class="tile-value" id="totalProductsValue">···</div>
+    </div>
+
+    <div class="bento-tile alt bento-s4">
+      <div class="tile-ic" data-icon="barChart"></div>
+      <div>
+        <div class="tile-label">All-time Revenue</div>
+        <div class="tile-value" id="allTimeValue">···</div>
+      </div>
+    </div>
+
+    <div class="bento-actions">
+      <a class="btn" href="/billing.html" id="newSaleBtn"></a>
+      <a class="btn secondary" href="/add-product.html" id="addProdBtn"></a>
+    </div>
+
+    <div class="bento-billing">
+      <div class="section-head">
+        <h2 id="dailyHead">Daily billing</h2>
+        <span style="display:flex;gap:12px;">
+          <a class="count" href="/analysis.html">Analysis →</a>
+          <a class="count" href="/bills.html">All bills →</a>
+        </span>
+      </div>
+      <div class="billing-table-wrap">
+        <table class="billing-table">
+          <thead><tr><th>Bill</th><th>Customer</th><th>Date</th><th class="num">Collection</th></tr></thead>
+          <tbody id="billingTableBody"></tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="dailyEmpty" style="display:none;">
+        <div class="ic" id="dailyEmptyIcon"></div>
+        <div class="t">No sales yet</div>
+        <div class="d">Bills from the last 3 days will show up here.</div>
+      </div>
+    </div>
+
+    <aside class="bento-restock" id="lowStockHead" style="display:none;">
+      <div class="section-head" style="margin-top:0;">
+        <h2>⚠ Restock</h2>
+        <span class="count" id="lowStockCount"></span>
+      </div>
+      <div class="low-stock-grid" id="lowStock"></div>
+    </aside>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/icons.js"></script>
+<script src="/js/common.js"></script>
+<script>
+  renderBottomNav('home');
+  document.getElementById('settingsIcon').innerHTML = icon('settings', 19);
+  document.getElementById('newSaleBtn').innerHTML = icon('bag', 18) + 'New Sale';
+  document.getElementById('addProdBtn').innerHTML = icon('plusCircle', 18) + 'Add Product';
+  document.getElementById('lowStockHead').querySelector('h2').innerHTML = icon('alert', 16) + ' Restock';
+  document.getElementById('dailyEmptyIcon').innerHTML = icon('receipt', 24);
+  document.querySelectorAll('.bento-tile .tile-ic').forEach((el) => { el.innerHTML = icon(el.dataset.icon, 17); });
+  document.querySelector('#pendingAlert .ic').innerHTML = icon('creditCard', 18);
+
+  // Rotates once per day (same for everyone viewing that day) so the dashboard
+  // opens with a fresh motivational line and an offer idea instead of a stat
+  // that's already shown in the cards below.
+  const DAILY_MESSAGES = [
+    { line: 'New day, new blessings — let’s make it count! ✨', offer: 'Today’s idea: 10% off on all Chunari' },
+    { line: 'Every sale starts with a smile. Greet, guide, and grow! 🌸', offer: 'Try: Buy 2, get 5% off on Khesh' },
+    { line: 'Small steps every day add up to big success. 🚀', offer: 'Today’s idea: Flat ₹10 off on orders above ₹200' },
+    { line: 'Your hustle today is tomorrow’s success. 💪', offer: 'Try: 15% off on Sinhasan this week' },
+    { line: 'Keep the shelves stocked and the smiles ready! 😊', offer: 'Today’s idea: Free gift wrap on Mukut' },
+    { line: 'A good day starts with good energy — let’s go! ☀️', offer: 'Try: 10% off for first-time customers' },
+    { line: 'Consistency is the key to a thriving shop. 🔑', offer: 'Today’s idea: Combo offer — Chunari + Khesh at 10% off' },
+    { line: 'Show up, shine, and sell with heart today. 🌟', offer: 'Try: 10% off on Julha for festival orders' },
+    { line: 'Great things happen one customer at a time. 🙏', offer: 'Today’s idea: 5% off on orders above ₹500' },
+  ];
+
+  function dayOfYear(d) {
+    const start = new Date(d.getFullYear(), 0, 0);
+    return Math.floor((d - start) / 86400000);
+  }
+
+  function renderDailyMessage() {
+    const hour = new Date().getHours();
+    document.getElementById('heroGreeting').textContent = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+    const msg = DAILY_MESSAGES[dayOfYear(new Date()) % DAILY_MESSAGES.length];
+    document.getElementById('heroLine').textContent = msg.line;
+    document.getElementById('heroOffer').textContent = msg.offer;
+  }
+  renderDailyMessage();
+
+  async function loadOffer() {
+    const info = await apiGet('/api/shop/info');
+    const offer = info.offer;
+    const banner = document.getElementById('offerBanner');
+    if (offer && offer.enabled && offer.percent > 0) {
+      banner.style.display = 'flex';
+      document.getElementById('offerBadge').textContent = offer.percent + '%';
+      document.getElementById('offerTitle').textContent = `🎉 ${offer.label} — ${offer.percent}% OFF`;
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+  loadOffer();
+  socket.on('offer:updated', loadOffer);
+
+  let stats = null;
+  let period = 'recent';
+
+  const PERIODS = {
+    recent: { label: 'Recent', revKey: 'recentRevenue', profitKey: 'recentProfit', countKey: 'recentCount' },
+    week: { label: "This Week's", revKey: 'weekRevenue', profitKey: 'weekProfit', countKey: 'weekCount' },
+    month: { label: "This Month's", revKey: 'monthRevenue', profitKey: 'monthProfit', countKey: 'monthCount' },
+  };
+
+  function renderPeriod() {
+    if (!stats) return;
+    const p = PERIODS[period];
+    document.getElementById('salesLabel').textContent = `${p.label} Sales`;
+    document.getElementById('profitLabel').textContent = `${p.label} Profit`;
+    document.getElementById('salesValue').textContent = fmtMoney(stats[p.revKey]);
+    document.getElementById('profitValue').textContent = fmtMoney(stats[p.profitKey]);
+  }
+
+  document.getElementById('periodTabs').addEventListener('click', (e) => {
+    const btn = e.target.closest('.period-tab');
+    if (!btn) return;
+    period = btn.dataset.period;
+    document.querySelectorAll('.period-tab').forEach((el) => el.classList.toggle('active', el === btn));
+    renderPeriod();
+  });
+
+  // ---- Daily billing: a per-bill table (bill #, customer, date, collection) for the last 3 days ----
+  function statusChip(status) {
+    if (status === 'paid') return '<span class="status-chip paid">Paid</span>';
+    if (status === 'cancelled') return '<span class="status-chip cancelled">Cancelled</span>';
+    return '<span class="status-chip pending">Pending</span>';
+  }
+
+  function renderBillingTable(bills) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 2);
+    cutoff.setHours(0, 0, 0, 0);
+    const recent = bills
+      .filter((b) => new Date(b.createdAt) >= cutoff)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    document.getElementById('dailyEmpty').style.display = recent.length ? 'none' : 'block';
+    document.querySelector('.billing-table-wrap').style.display = recent.length ? 'block' : 'none';
+
+    document.getElementById('billingTableBody').innerHTML = recent
+      .map((b) => {
+        const dt = new Date(b.createdAt);
+        const dateText = dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ' · ' + dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return `<tr>
+          <td class="bill-no">${fmtBillNo(b.billNo)}</td>
+          <td>${b.customer.name || 'Walk-in'}</td>
+          <td>${dateText}</td>
+          <td class="num">${fmtMoney(b.totalAmount)}${statusChip(b.status)}</td>
+        </tr>`;
+      })
+      .join('');
+  }
+
+  async function load() {
+    const [statsRes, bills] = await Promise.all([
+      apiGet('/api/bills/summary/stats'),
+      apiGet('/api/bills'),
+    ]);
+    stats = statsRes;
+    renderPeriod();
+    renderBillingTable(bills);
+    document.getElementById('totalProductsValue').textContent = stats.totalProducts;
+    document.getElementById('allTimeValue').textContent = fmtMoney(stats.allTimeRevenue);
+
+    const pendingEl = document.getElementById('pendingAlert');
+    if (stats.pendingCount > 0) {
+      pendingEl.style.display = 'flex';
+      document.getElementById('pendingTitle').textContent = `${stats.pendingCount} customer order${stats.pendingCount > 1 ? 's' : ''} awaiting payment · ${fmtMoney(stats.pendingAmount)}`;
+    } else {
+      pendingEl.style.display = 'none';
+    }
+
+    const lowStockEl = document.getElementById('lowStock');
+    const headEl = document.getElementById('lowStockHead');
+    if (stats.lowStock.length) {
+      headEl.style.display = 'block';
+      document.getElementById('lowStockCount').textContent = stats.lowStock.length + ' item' + (stats.lowStock.length > 1 ? 's' : '');
+      lowStockEl.innerHTML = stats.lowStock
+        .map((p) => {
+          let text;
+          if (p.hasSizeVariants) {
+            const low = p.sizeOptions.reduce((a, b) => (a.stockQty <= b.stockQty ? a : b));
+            text = `${low.label}: ${low.stockQty === 0 ? 'Out' : low.stockQty + ' left'}`;
+          } else {
+            text = p.stockQty === 0 ? 'Out' : p.stockQty + ' left';
+          }
+          return `<a class="product-card" href="/product.html?id=${p.id}">
+            <div class="thumb-wrap">
+              <img class="thumb" src="${p.imageUrl || ''}" onerror="this.style.opacity=0" />
+              <span class="stock-chip ${(p.hasSizeVariants ? p.sizeOptions.some((o) => o.stockQty === 0) : p.stockQty === 0) ? 'out' : 'low'}">${text}</span>
+            </div>
+            <div class="body"><p class="title">${p.title}</p></div>
+          </a>`;
+        })
+        .join('');
+    } else {
+      headEl.style.display = 'none';
+      lowStockEl.innerHTML = '';
+    }
+  }
+
+  (async function init() {
+    const me = await requireOwnerPage();
+    if (!me) return;
+    enableOrderChime();
+    load();
+  })();
+
+  socket.on('bill:created', load);
+  socket.on('bill:updated', load);
+  socket.on('product:created', load);
+  socket.on('product:updated', load);
+  socket.on('product:deleted', load);
+</script>

@@ -1,0 +1,406 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>New Bill - Chunari POS</title>
+<link rel="stylesheet" href="/css/style.css" />
+<style>
+  .container { padding-bottom: 200px; }
+  .sheet-backdrop {
+    position: fixed; inset: 0; background: rgba(34,23,18,0.5); z-index: 60;
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .sheet {
+    width: 100%; max-width: 480px; background: var(--surface);
+    border-radius: 22px 22px 0 0; padding: 20px; box-shadow: var(--shadow-lg);
+  }
+  .sheet .prod { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .sheet .prod img { width: 56px; height: 56px; border-radius: 12px; object-fit: cover; background: var(--surface-sunk); }
+  .sheet .prod .t { font-weight: 700; font-size: 15px; }
+  .sheet .prod .p { font-size: 13px; color: var(--ink-faint); }
+  .details-toggle { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 4px 0; }
+</style>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">C</div>
+    <div>
+      <span class="eyebrow">Checkout</span>
+      <h1>New Bill</h1>
+    </div>
+  </div>
+  <span class="icon-btn" id="scanToggle"></span>
+</header>
+
+<div class="container">
+  <div class="scanner-panel" id="scannerBox" style="display:none;">
+    <div id="reader"></div>
+    <p class="hint">Point the camera at a product's QR code</p>
+  </div>
+
+  <div class="search-bar">
+    <span class="icon" id="searchIcon"></span>
+    <input type="text" id="search" placeholder="Search product to add…" />
+  </div>
+  <div id="searchResults"></div>
+
+  <div class="section-head">
+    <h2 id="cartHead">Bill Items</h2>
+    <span class="count" id="cartCount"></span>
+  </div>
+  <div id="cart"></div>
+  <div class="empty-state" id="cartEmpty">
+    <div class="ic" id="cartEmptyIcon"></div>
+    <div class="t">No items yet</div>
+    <div class="d">Scan a QR code or search above to add items.</div>
+  </div>
+
+  <div class="card" style="padding:4px 16px;margin-top:18px;">
+    <div class="details-toggle" id="detailsToggle">
+      <span style="font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px;" id="detailsToggleLabel"></span>
+      <span id="detailsChevron"></span>
+    </div>
+    <div id="customerFields" style="display:none;padding:14px 0 6px;">
+      <div class="field"><label id="lblName"></label><input type="text" id="custName" placeholder="Walk-in customer" /></div>
+      <div class="row">
+        <div class="field"><label id="lblMobile"></label><input type="tel" id="custMobile" placeholder="10-digit mobile" /></div>
+        <div class="field"><label id="lblEmail"></label><input type="email" id="custEmail" placeholder="you@example.com" /></div>
+      </div>
+      <div class="field"><label id="lblAddress"></label><input type="text" id="custAddress" placeholder="Address" /></div>
+    </div>
+  </div>
+
+  <div class="card" style="padding:14px 16px;margin-top:12px;display:none;" id="offerCard">
+    <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;gap:10px;">
+      <span style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;" id="offerCheckLabel"></span>
+      <input type="checkbox" id="applyOffer" style="width:18px;height:18px;flex-shrink:0;" />
+    </label>
+  </div>
+</div>
+
+<div class="sticky-bar" id="totalsBox" style="display:none;">
+  <div style="flex:1;">
+    <div style="font-size:11px;color:var(--ink-faint);font-weight:700;">TOTAL</div>
+    <div id="discountLine" style="font-size:11px;color:var(--success);font-weight:700;display:none;"></div>
+    <div id="totalAmt" style="font-family:var(--font-display);font-size:19px;font-weight:600;color:var(--primary-dark);"></div>
+  </div>
+  <button class="btn" id="checkoutBtn" style="flex:1.3;"></button>
+</div>
+
+<div id="sheetHost"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/vendor/html5-qrcode.min.js"></script>
+<script src="/js/icons.js"></script>
+<script src="/js/common.js"></script>
+<script>
+  renderBottomNav('billing');
+  document.getElementById('scanToggle').innerHTML = icon('camera', 19);
+  document.getElementById('searchIcon').innerHTML = icon('search', 18);
+  document.getElementById('cartEmptyIcon').innerHTML = icon('bag', 24);
+  document.getElementById('checkoutBtn').innerHTML = icon('check', 18) + 'Generate Bill';
+  document.getElementById('cartHead').innerHTML = icon('bag', 16) + ' Bill Items';
+  document.getElementById('detailsToggleLabel').innerHTML = icon('user', 15) + ' Customer details (optional)';
+  document.getElementById('detailsChevron').innerHTML = icon('chevronLeft', 16, '');
+  document.getElementById('detailsChevron').style.transform = 'rotate(-90deg)';
+  document.getElementById('lblName').innerHTML = icon('user', 13) + ' Name';
+  document.getElementById('lblMobile').innerHTML = icon('phone', 13) + ' Mobile';
+  document.getElementById('lblEmail').innerHTML = icon('mail', 13) + ' Email';
+  document.getElementById('lblAddress').innerHTML = icon('mapPin', 13) + ' Address';
+
+  document.getElementById('detailsToggle').addEventListener('click', () => {
+    const box = document.getElementById('customerFields');
+    const chevron = document.getElementById('detailsChevron');
+    const open = box.style.display !== 'none';
+    box.style.display = open ? 'none' : 'block';
+    chevron.style.transform = open ? 'rotate(-90deg)' : 'rotate(0deg)';
+  });
+
+  let products = [];
+  let cart = {}; // key = "productId" or "productId::size" -> { product, size, label, sellingPrice, stockQty, qty }
+  let offer = null;
+  let applyOfferChecked = false;
+
+  async function loadProducts() {
+    products = await apiGet('/api/products');
+  }
+
+  async function loadOffer() {
+    const info = await apiGet('/api/shop/info');
+    offer = info.offer;
+    const card = document.getElementById('offerCard');
+    if (offer && offer.enabled && offer.percent > 0) {
+      card.style.display = 'block';
+      document.getElementById('offerCheckLabel').innerHTML = `${icon('sparkle', 15)} Apply ${offer.label} — ${offer.percent}% off`;
+    } else {
+      card.style.display = 'none';
+      applyOfferChecked = false;
+    }
+    renderCart();
+  }
+  document.getElementById('applyOffer').addEventListener('change', (e) => {
+    applyOfferChecked = e.target.checked;
+    renderCart();
+  });
+
+  function cartKey(productId, size) {
+    return size ? `${productId}::${size}` : productId;
+  }
+
+  function renderCart() {
+    const cartEl = document.getElementById('cart');
+    const entries = Object.values(cart);
+    document.getElementById('cartEmpty').style.display = entries.length ? 'none' : 'block';
+    document.getElementById('totalsBox').style.display = entries.length ? 'flex' : 'none';
+    document.getElementById('cartCount').textContent = entries.length ? entries.reduce((a, e) => a + e.qty, 0) + ' item(s)' : '';
+
+    let subtotal = 0;
+    cartEl.innerHTML = entries
+      .map((e) => {
+        subtotal += e.sellingPrice * e.qty;
+        return `<div class="cart-item">
+          <img src="${e.product.imageUrl || ''}" onerror="this.style.opacity=0" />
+          <div class="info">
+            <div class="t">${e.product.title}${e.size ? ` <span style="color:var(--ink-faint);font-weight:400;">· ${e.label}</span>` : ''}</div>
+            <div class="p">${fmtMoney(e.sellingPrice)} × ${e.qty} = ${fmtMoney(e.sellingPrice * e.qty)}</div>
+          </div>
+          <div class="qty-control">
+            <button onclick="changeQty('${e.key}', -1)">${icon('minus', 14)}</button>
+            <span>${e.qty}</span>
+            <button onclick="changeQty('${e.key}', 1)">${icon('plus', 14)}</button>
+          </div>
+        </div>`;
+      })
+      .join('');
+
+    const useDiscount = applyOfferChecked && offer && offer.enabled && offer.percent > 0;
+    const discountAmt = useDiscount ? Math.round(subtotal * offer.percent) / 100 : 0;
+    const discountLine = document.getElementById('discountLine');
+    if (useDiscount) {
+      discountLine.style.display = 'block';
+      discountLine.textContent = `${fmtMoney(subtotal)} − ${offer.percent}% off = -${fmtMoney(discountAmt)}`;
+    } else {
+      discountLine.style.display = 'none';
+    }
+    document.getElementById('totalAmt').textContent = fmtMoney(subtotal - discountAmt);
+  }
+
+  // For a plain product, size is ''/undefined. For a variant product (size or numbered), size must be a variant key.
+  function addToCart(product, size) {
+    if (!product) return;
+    const opt = product.isVariant ? product.variantOptions.find((o) => o.key === size) : null;
+    if (product.isVariant && !opt) return;
+    const key = cartKey(product.id, size);
+    const sellingPrice = opt ? opt.sellingPrice : product.sellingPrice;
+    const stockQty = opt ? opt.stockQty : product.stockQty;
+    const label = opt ? opt.label : '';
+    if (stockQty <= 0 && !cart[key]) {
+      toast('Out of stock: ' + product.title, true);
+      return;
+    }
+    if (!cart[key]) cart[key] = { key, product, size: size || '', label, sellingPrice, stockQty, qty: 0 };
+    if (cart[key].qty + 1 > stockQty) {
+      toast('Only ' + stockQty + ' in stock', true);
+      return;
+    }
+    cart[key].qty += 1;
+    renderCart();
+    toast('Added: ' + product.title + (label ? ' · ' + label : ''));
+  }
+
+  window.changeQty = function (key, delta) {
+    if (!cart[key]) return;
+    cart[key].qty += delta;
+    if (cart[key].qty <= 0) delete cart[key];
+    renderCart();
+  };
+
+  document.getElementById('search').addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    const box = document.getElementById('searchResults');
+    if (!q) { box.innerHTML = ''; return; }
+    const matches = products.filter((p) => p.title.toLowerCase().includes(q)).slice(0, 8);
+    box.innerHTML = matches
+      .map(
+        (p) => `<div class="result-item" onclick='window.__addProduct(${JSON.stringify(p.id)})'>
+          <img src="${p.imageUrl || ''}" onerror="this.style.opacity=0" />
+          <div style="flex:1;">
+            <div class="t">${p.title}</div>
+            <div class="p">${fmtMoney(p.sellingPrice)} · ${p.stockQty} in stock</div>
+          </div>
+        </div>`
+      )
+      .join('');
+  });
+
+  window.__addProduct = function (id) {
+    const p = products.find((x) => x.id === id);
+    if (p.isVariant) {
+      openAddSheet(p);
+    } else {
+      addToCart(p);
+    }
+    document.getElementById('search').value = '';
+    document.getElementById('searchResults').innerHTML = '';
+  };
+
+  document.getElementById('checkoutBtn').addEventListener('click', async () => {
+    const entries = Object.values(cart);
+    if (!entries.length) { toast('Add at least one item', true); return; }
+    const btn = document.getElementById('checkoutBtn');
+    btn.disabled = true;
+    try {
+      const bill = await apiSend('/api/bills', 'POST', {
+        items: entries.map((e) => ({ productId: e.product.id, qty: e.qty, size: e.size || '' })),
+        customer: {
+          name: document.getElementById('custName').value.trim(),
+          mobile: document.getElementById('custMobile').value.trim(),
+          email: document.getElementById('custEmail').value.trim(),
+          address: document.getElementById('custAddress').value.trim(),
+        },
+        applyDiscount: applyOfferChecked,
+      });
+      toast('Bill generated!');
+      location.href = '/bill.html?id=' + bill.id;
+    } catch (err) {
+      toast(err.message, true);
+      btn.disabled = false;
+    }
+  });
+
+  // ---- QR scanner: show a View / Add to Bill action sheet ----
+  let scanner = null;
+  let scanLocked = false;
+
+  document.getElementById('scanToggle').addEventListener('click', () => {
+    const box = document.getElementById('scannerBox');
+    const toggle = document.getElementById('scanToggle');
+    if (box.style.display === 'none') {
+      box.style.display = 'block';
+      toggle.classList.add('on');
+      startScanner();
+    } else {
+      box.style.display = 'none';
+      toggle.classList.remove('on');
+      stopScanner();
+    }
+  });
+
+  function extractProductId(text) {
+    const m = text.match(/\/product\/([a-f0-9-]{36})/i);
+    return m ? m[1] : null;
+  }
+
+  function openAddSheet(product, fromScan) {
+    if (fromScan) scanLocked = true;
+    let sheetSize = product.isVariant ? product.variantOptions[0].key : null;
+    const host = document.getElementById('sheetHost');
+
+    function sizeRows() {
+      if (!product.isVariant) return '';
+      return `<div style="margin-bottom:14px;">
+        ${product.variantOptions.map((o) => `
+          <label class="details-toggle" style="cursor:pointer;">
+            <span style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;">
+              <input type="checkbox" class="sheetSizeCheck" data-key="${o.key}" ${sheetSize === o.key ? 'checked' : ''} style="width:17px;height:17px;" />
+              ${o.label} <span style="color:var(--ink-faint);font-weight:400;">(${o.stockQty} in stock)</span>
+            </span>
+            <span style="font-weight:700;">${fmtMoney(o.sellingPrice)}</span>
+          </label>`).join('')}
+      </div>`;
+    }
+
+    function priceLine() {
+      const opt = product.isVariant ? product.variantOptions.find((o) => o.key === sheetSize) : null;
+      return opt ? `${fmtMoney(opt.sellingPrice)} · ${opt.stockQty} in stock` : `${fmtMoney(product.sellingPrice)} · ${product.stockQty} in stock`;
+    }
+
+    function renderSheet() {
+      host.innerHTML = `
+        <div class="sheet-backdrop" id="sheetBackdrop">
+          <div class="sheet">
+            <div class="prod">
+              <img src="${product.imageUrl || ''}" onerror="this.style.opacity=0" />
+              <div>
+                <div class="t">${product.title}</div>
+                <div class="p" id="sheetPriceLine">${priceLine()}</div>
+              </div>
+            </div>
+            ${sizeRows()}
+            <div class="row">
+              <button class="btn secondary" id="sheetView">${icon('search',16)} View Details</button>
+              <button class="btn" id="sheetAdd">${icon('bag',16)} Add to Bill</button>
+            </div>
+          </div>
+        </div>`;
+      document.getElementById('sheetBackdrop').addEventListener('click', (e) => {
+        if (e.target.id === 'sheetBackdrop') closeSheet();
+      });
+      document.getElementById('sheetView').addEventListener('click', () => {
+        location.href = '/product.html?id=' + product.id;
+      });
+      document.getElementById('sheetAdd').addEventListener('click', () => {
+        addToCart(product, sheetSize);
+        closeSheet();
+      });
+      document.querySelectorAll('.sheetSizeCheck').forEach((el) => {
+        el.addEventListener('change', () => { sheetSize = el.dataset.key; renderSheet(); });
+      });
+    }
+    renderSheet();
+  }
+
+  function closeSheet() {
+    document.getElementById('sheetHost').innerHTML = '';
+    scanLocked = false;
+  }
+
+  function startScanner() {
+    scanner = new Html5Qrcode('reader');
+    scanner
+      .start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: 220 },
+        (decodedText) => {
+          if (scanLocked) return;
+          const id = extractProductId(decodedText);
+          if (id) {
+            const p = products.find((x) => x.id === id);
+            if (p) openAddSheet(p, true);
+            else toast('Unknown QR code', true);
+          }
+        },
+        () => {}
+      )
+      .catch((err) => {
+        toast('Camera error: ' + err, true);
+        document.getElementById('scannerBox').style.display = 'none';
+      });
+  }
+
+  function stopScanner() {
+    if (scanner) {
+      scanner.stop().then(() => scanner.clear()).catch(() => {});
+      scanner = null;
+    }
+  }
+
+  // ---- init ----
+  (async function init() {
+    const me = await requireOwnerPage();
+    if (!me) return;
+    enableOrderChime();
+    renderCart();
+    await loadProducts();
+    loadOffer();
+    const params = new URLSearchParams(location.search);
+    const addId = params.get('add');
+    if (addId) {
+      const p = products.find((x) => x.id === addId);
+      if (p) addToCart(p, params.get('size') || undefined);
+      history.replaceState({}, '', '/billing.html');
+    }
+  })();
+  socket.on('offer:updated', loadOffer);
+
+  socket.on('product:updated', loadProducts);
+  socket.on('product:created', loadProducts);
+</script>

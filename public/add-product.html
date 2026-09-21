@@ -1,0 +1,370 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Add Product - Chunari POS</title>
+<link rel="stylesheet" href="/css/style.css" />
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">C</div>
+    <div>
+      <span class="eyebrow" id="eyebrow">New item</span>
+      <h1 id="pageTitle">Add Product</h1>
+    </div>
+  </div>
+  <a class="icon-btn" href="/products.html" id="closeIcon"></a>
+</header>
+
+<div class="container">
+  <form id="form">
+    <div class="field">
+      <label>Photo</label>
+      <label class="photo-drop" id="photoDrop">
+        <input type="file" id="image" accept="image/*" capture="environment" />
+        <div id="dropInner">
+          <div class="ph-icon" id="phIcon"></div>
+          <div class="ph-text">Tap to take or choose a photo</div>
+          <div class="ph-sub">JPG, PNG or WEBP</div>
+        </div>
+      </label>
+    </div>
+
+    <div class="field">
+      <label>Title</label>
+      <input type="text" id="title" placeholder="e.g. Darbari Macha Work Green" required />
+    </div>
+
+    <div class="field">
+      <label>Category</label>
+      <input type="text" id="category" list="categoryList" placeholder="e.g. Mukut" />
+      <datalist id="categoryList"></datalist>
+    </div>
+
+    <div class="field">
+      <label>Size(s)</label>
+      <input type="text" id="sizes" placeholder="e.g. Small, Medium, Large" />
+    </div>
+
+    <label class="checkbox-row" id="sizeVariantToggleRow" style="display:none;align-items:center;gap:10px;margin:4px 0 14px;cursor:pointer;">
+      <input type="checkbox" id="hasSizeVariants" style="width:18px;height:18px;" />
+      <span style="font-weight:600;font-size:14px;">This item comes in two sizes — Small (10x13) &amp; Big (13x18)</span>
+    </label>
+
+    <label class="checkbox-row" id="numberVariantToggleRow" style="display:none;align-items:center;gap:10px;margin:4px 0 14px;cursor:pointer;">
+      <input type="checkbox" id="hasNumberVariants" style="width:18px;height:18px;" />
+      <span style="font-weight:600;font-size:14px;">This item comes in numbered sizes — No. 1 to No. 5</span>
+    </label>
+
+    <div id="singleSizeFields">
+      <div class="row">
+        <div class="field">
+          <label>Purchase Price</label>
+          <div class="price-input"><span class="cur">₹</span><input type="number" id="purchasePrice" step="0.01" min="0" placeholder="0" /></div>
+        </div>
+        <div class="field">
+          <label>Selling Price</label>
+          <div class="price-input"><span class="cur">₹</span><input type="number" id="sellingPrice" step="0.01" min="0" placeholder="0" /></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Stock Quantity</label>
+        <input type="number" id="stockQty" min="0" placeholder="0" />
+      </div>
+    </div>
+
+    <div id="variantSizeFields" style="display:none;">
+      <div class="card" style="padding:14px 16px;margin-bottom:14px;">
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--ink-soft);">Small (10x13)</div>
+        <div class="row">
+          <div class="field">
+            <label>Purchase Price</label>
+            <div class="price-input"><span class="cur">₹</span><input type="number" id="smallPurchasePrice" step="0.01" min="0" placeholder="0" /></div>
+          </div>
+          <div class="field">
+            <label>Selling Price</label>
+            <div class="price-input"><span class="cur">₹</span><input type="number" id="smallSellingPrice" step="0.01" min="0" placeholder="0" /></div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Stock Quantity</label>
+          <input type="number" id="smallStockQty" min="0" placeholder="0" />
+        </div>
+      </div>
+
+      <div class="card" style="padding:14px 16px;margin-bottom:14px;">
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--ink-soft);">Big (13x18)</div>
+        <div class="row">
+          <div class="field">
+            <label>Purchase Price</label>
+            <div class="price-input"><span class="cur">₹</span><input type="number" id="bigPurchasePrice" step="0.01" min="0" placeholder="0" /></div>
+          </div>
+          <div class="field">
+            <label>Selling Price</label>
+            <div class="price-input"><span class="cur">₹</span><input type="number" id="bigSellingPrice" step="0.01" min="0" placeholder="0" /></div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Stock Quantity</label>
+          <input type="number" id="bigStockQty" min="0" placeholder="0" />
+        </div>
+      </div>
+    </div>
+
+    <div id="numberVariantFields" style="display:none;">
+      <div class="card" style="padding:14px 16px;margin-bottom:14px;">
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--ink-soft);">No. 1</div>
+        <div class="row">
+          <div class="field">
+            <label>Purchase Price</label>
+            <div class="price-input"><span class="cur">₹</span><input type="number" id="num1PurchasePrice" step="0.01" min="0" placeholder="0" /></div>
+          </div>
+          <div class="field">
+            <label>Selling Price</label>
+            <div class="price-input"><span class="cur">₹</span><input type="number" id="num1SellingPrice" step="0.01" min="0" placeholder="0" /></div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Stock Quantity</label>
+          <input type="number" id="num1StockQty" min="0" placeholder="0" />
+        </div>
+      </div>
+
+      <div class="card" style="padding:14px 16px;margin-bottom:14px;">
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--ink-soft);">No. 2</div>
+        <div class="row">
+          <div class="field">
+            <label>Purchase Price</label>
+            <div class="price-input"><span class="cur">₹</span><input type="number" id="num2PurchasePrice" step="0.01" min="0" placeholder="0" /></div>
+          </div>
+          <div class="field">
+            <label>Selling Price</label>
+            <div class="price-input"><span class="cur">₹</span><input type="number" id="num2SellingPrice" step="0.01" min="0" placeholder="0" /></div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Stock Quantity</label>
+          <input type="number" id="num2StockQty" min="0" placeholder="0" />
+        </div>
+      </div>
+
+      <div class="card" style="padding:14px 16px;margin-bottom:14px;">
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--ink-soft);">No. 3</div>
+        <div class="row">
+          <div class="field">
+            <label>Purchase Price</label>
+            <div class="price-input"><span class="cur">₹</span><input type="number" id="num3PurchasePrice" step="0.01" min="0" placeholder="0" /></div>
+          </div>
+          <div class="field">
+            <label>Selling Price</label>
+            <div class="price-input"><span class="cur">₹</span><input type="number" id="num3SellingPrice" step="0.01" min="0" placeholder="0" /></div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Stock Quantity</label>
+          <input type="number" id="num3StockQty" min="0" placeholder="0" />
+        </div>
+      </div>
+
+      <div class="card" style="padding:14px 16px;margin-bottom:14px;">
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--ink-soft);">No. 4</div>
+        <div class="row">
+          <div class="field">
+            <label>Purchase Price</label>
+            <div class="price-input"><span class="cur">₹</span><input type="number" id="num4PurchasePrice" step="0.01" min="0" placeholder="0" /></div>
+          </div>
+          <div class="field">
+            <label>Selling Price</label>
+            <div class="price-input"><span class="cur">₹</span><input type="number" id="num4SellingPrice" step="0.01" min="0" placeholder="0" /></div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Stock Quantity</label>
+          <input type="number" id="num4StockQty" min="0" placeholder="0" />
+        </div>
+      </div>
+
+      <div class="card" style="padding:14px 16px;margin-bottom:14px;">
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--ink-soft);">No. 5</div>
+        <div class="row">
+          <div class="field">
+            <label>Purchase Price</label>
+            <div class="price-input"><span class="cur">₹</span><input type="number" id="num5PurchasePrice" step="0.01" min="0" placeholder="0" /></div>
+          </div>
+          <div class="field">
+            <label>Selling Price</label>
+            <div class="price-input"><span class="cur">₹</span><input type="number" id="num5SellingPrice" step="0.01" min="0" placeholder="0" /></div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Stock Quantity</label>
+          <input type="number" id="num5StockQty" min="0" placeholder="0" />
+        </div>
+      </div>
+    </div>
+
+    <button type="submit" class="btn" id="submitBtn"></button>
+  </form>
+
+  <div id="deleteBox" style="margin-top:12px;display:none;">
+    <button class="btn danger" id="deleteBtn"></button>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/icons.js"></script>
+<script src="/js/common.js"></script>
+<script>
+  renderBottomNav('add');
+  document.getElementById('closeIcon').innerHTML = icon('close', 18);
+  document.getElementById('phIcon').innerHTML = icon('camera', 20);
+  document.getElementById('submitBtn').innerHTML = icon('check', 18) + 'Save Product';
+  document.getElementById('deleteBtn').innerHTML = icon('trash', 17) + 'Delete Product';
+
+  requireOwnerPage();
+
+  const params = new URLSearchParams(location.search);
+  const editId = params.get('id');
+
+  apiGet('/api/products').then((all) => {
+    const cats = [...new Set(all.map((p) => p.category).filter(Boolean))].sort();
+    document.getElementById('categoryList').innerHTML = cats.map((c) => `<option value="${c}"></option>`).join('');
+  });
+
+  function syncSizeFieldsVisibility() {
+    const sizeOn = document.getElementById('hasSizeVariants').checked;
+    const numOn = document.getElementById('hasNumberVariants').checked;
+    document.getElementById('singleSizeFields').style.display = (sizeOn || numOn) ? 'none' : 'block';
+    document.getElementById('variantSizeFields').style.display = sizeOn ? 'block' : 'none';
+    document.getElementById('numberVariantFields').style.display = numOn ? 'block' : 'none';
+  }
+  document.getElementById('hasSizeVariants').addEventListener('change', () => {
+    if (document.getElementById('hasSizeVariants').checked) document.getElementById('hasNumberVariants').checked = false;
+    syncSizeFieldsVisibility();
+  });
+  document.getElementById('hasNumberVariants').addEventListener('change', () => {
+    if (document.getElementById('hasNumberVariants').checked) document.getElementById('hasSizeVariants').checked = false;
+    syncSizeFieldsVisibility();
+  });
+
+  function syncVariantToggleVisibility() {
+    const cat = document.getElementById('category').value.trim().toLowerCase();
+    const isChunari = cat === 'chunari';
+    const isNumberCat = cat === 'julha' || cat === 'sinhasan';
+    document.getElementById('sizeVariantToggleRow').style.display = isChunari ? 'flex' : 'none';
+    document.getElementById('numberVariantToggleRow').style.display = isNumberCat ? 'flex' : 'none';
+    if (!isChunari && document.getElementById('hasSizeVariants').checked) document.getElementById('hasSizeVariants').checked = false;
+    if (!isNumberCat && document.getElementById('hasNumberVariants').checked) document.getElementById('hasNumberVariants').checked = false;
+    syncSizeFieldsVisibility();
+  }
+  document.getElementById('category').addEventListener('input', syncVariantToggleVisibility);
+
+  function setPreview(url) {
+    const drop = document.getElementById('photoDrop');
+    drop.classList.add('has-image');
+    document.getElementById('dropInner').outerHTML = `<img id="dropInner" src="${url}" />`;
+  }
+
+  if (editId) {
+    document.getElementById('eyebrow').textContent = 'Edit item';
+    document.getElementById('pageTitle').textContent = 'Edit Product';
+    document.getElementById('submitBtn').innerHTML = icon('check', 18) + 'Update Product';
+    document.getElementById('deleteBox').style.display = 'block';
+    apiGet('/api/products/' + editId).then((p) => {
+      document.getElementById('title').value = p.title;
+      document.getElementById('category').value = p.category || '';
+      document.getElementById('sizes').value = p.sizes || '';
+      document.getElementById('hasSizeVariants').checked = !!p.hasSizeVariants;
+      document.getElementById('hasNumberVariants').checked = !!p.hasNumberVariants;
+      if (p.hasSizeVariants) {
+        const small = p.sizeOptions.find((o) => o.key === 'small');
+        const big = p.sizeOptions.find((o) => o.key === 'big');
+        document.getElementById('smallPurchasePrice').value = small.purchasePrice;
+        document.getElementById('smallSellingPrice').value = small.sellingPrice;
+        document.getElementById('smallStockQty').value = small.stockQty;
+        document.getElementById('bigPurchasePrice').value = big.purchasePrice;
+        document.getElementById('bigSellingPrice').value = big.sellingPrice;
+        document.getElementById('bigStockQty').value = big.stockQty;
+      } else if (p.hasNumberVariants) {
+        p.numberVariants.forEach((o) => {
+          document.getElementById(`num${o.key}PurchasePrice`).value = o.purchasePrice;
+          document.getElementById(`num${o.key}SellingPrice`).value = o.sellingPrice;
+          document.getElementById(`num${o.key}StockQty`).value = o.stockQty;
+        });
+      } else {
+        document.getElementById('purchasePrice').value = p.purchasePrice;
+        document.getElementById('sellingPrice').value = p.sellingPrice;
+        document.getElementById('stockQty').value = p.stockQty;
+      }
+      syncVariantToggleVisibility();
+      syncSizeFieldsVisibility();
+      if (p.imageUrl) setPreview(p.imageUrl);
+    });
+  } else {
+    syncVariantToggleVisibility();
+  }
+
+  document.getElementById('image').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setPreview(URL.createObjectURL(file));
+  });
+
+  document.getElementById('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData();
+    fd.append('title', document.getElementById('title').value);
+    fd.append('category', document.getElementById('category').value);
+    fd.append('sizes', document.getElementById('sizes').value);
+    const hasSizeVariants = document.getElementById('hasSizeVariants').checked;
+    const hasNumberVariants = document.getElementById('hasNumberVariants').checked;
+    fd.append('hasSizeVariants', hasSizeVariants);
+    fd.append('hasNumberVariants', hasNumberVariants);
+    if (hasSizeVariants) {
+      fd.append('smallPurchasePrice', document.getElementById('smallPurchasePrice').value || 0);
+      fd.append('smallSellingPrice', document.getElementById('smallSellingPrice').value || 0);
+      fd.append('smallStockQty', document.getElementById('smallStockQty').value || 0);
+      fd.append('bigPurchasePrice', document.getElementById('bigPurchasePrice').value || 0);
+      fd.append('bigSellingPrice', document.getElementById('bigSellingPrice').value || 0);
+      fd.append('bigStockQty', document.getElementById('bigStockQty').value || 0);
+    } else if (hasNumberVariants) {
+      ['1', '2', '3', '4', '5'].forEach((k) => {
+        fd.append(`num${k}PurchasePrice`, document.getElementById(`num${k}PurchasePrice`).value || 0);
+        fd.append(`num${k}SellingPrice`, document.getElementById(`num${k}SellingPrice`).value || 0);
+        fd.append(`num${k}StockQty`, document.getElementById(`num${k}StockQty`).value || 0);
+      });
+    } else {
+      fd.append('purchasePrice', document.getElementById('purchasePrice').value || 0);
+      fd.append('sellingPrice', document.getElementById('sellingPrice').value || 0);
+      fd.append('stockQty', document.getElementById('stockQty').value || 0);
+    }
+    const file = document.getElementById('image').files[0];
+    if (file) fd.append('image', file);
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    try {
+      let result;
+      if (editId) {
+        result = await apiSend('/api/products/' + editId, 'PUT', fd, true);
+      } else {
+        result = await apiSend('/api/products', 'POST', fd, true);
+      }
+      toast(editId ? 'Product updated' : 'Product added');
+      location.href = '/product.html?id=' + result.id;
+    } catch (err) {
+      toast(err.message, true);
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('deleteBtn')?.addEventListener('click', async () => {
+    if (!confirm('Delete this product? This cannot be undone.')) return;
+    try {
+      await apiSend('/api/products/' + editId, 'DELETE', {});
+      toast('Product deleted');
+      location.href = '/products.html';
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+</script>

@@ -1,0 +1,164 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Product - Chunari POS</title>
+<link rel="stylesheet" href="/css/style.css" />
+<style>#content { padding-bottom: 84px; }</style>
+
+<header class="topbar">
+  <a class="icon-btn" href="/shop.html" id="backIcon"></a>
+  <h1 style="font-size:15px;font-weight:700;color:var(--ink-soft);">Product Details</h1>
+  <a class="icon-btn" href="/add-product.html" id="editIcon" style="visibility:hidden;"></a>
+</header>
+
+<div class="container" id="content">
+  <div class="skeleton" style="aspect-ratio:1/1;margin-bottom:18px;"></div>
+  <div class="skeleton" style="height:22px;width:70%;margin-bottom:20px;"></div>
+  <div class="skeleton" style="height:180px;"></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/icons.js"></script>
+<script src="/js/common.js"></script>
+<script>
+  document.getElementById('backIcon').innerHTML = icon('chevronLeft', 19);
+  document.getElementById('editIcon').innerHTML = icon('edit', 18);
+
+  const params = new URLSearchParams(location.search);
+  // A QR code scanned with the phone's own camera app (not this app's built-in
+  // scanner) opens /product/<id> directly, with no query string - fall back to
+  // parsing the id out of the path in that case.
+  const pathMatch = location.pathname.match(/\/product\/([a-f0-9-]{36})/i);
+  const id = params.get('id') || (pathMatch ? pathMatch[1] : null);
+  document.getElementById('editIcon').href = '/add-product.html?id=' + id;
+
+  let isOwner = false;
+  let selectedVariant = null;
+
+  function sizePicker(p, showStock) {
+    if (!p.isVariant) return '';
+    return `
+      <div class="card spec-card" id="sizePicker">
+        <div style="font-weight:700;font-size:13px;padding:2px 0 10px;color:var(--ink-soft);">${icon('box',14)} Choose size</div>
+        ${p.variantOptions.map((o) => `
+          <label class="detail-row" style="cursor:pointer;">
+            <span class="k" style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" class="sizeOptCheck" data-key="${o.key}" ${selectedVariant === o.key ? 'checked' : ''} style="width:17px;height:17px;" />
+              ${o.label}${showStock ? ` <span style="color:var(--ink-faint);font-weight:400;">(${o.stockQty} in stock)</span>` : ''}
+            </span>
+            <span class="v accent">${fmtMoney(o.sellingPrice)}</span>
+          </label>`).join('')}
+      </div>`;
+  }
+
+  function ownerBlock(p) {
+    const opt = p.isVariant ? p.variantOptions.find((o) => o.key === selectedVariant) : null;
+    const sellingPrice = opt ? opt.sellingPrice : p.sellingPrice;
+    const purchasePrice = opt ? opt.purchasePrice : p.purchasePrice;
+    const margin = sellingPrice - purchasePrice;
+    return `
+      ${sizePicker(p, true)}
+      <div class="card spec-card">
+        ${p.isVariant ? '' : `<div class="detail-row"><span class="k">${icon('box',15)} Size(s)</span><span class="v">${p.sizes || '—'}</span></div>`}
+        <div class="detail-row"><span class="k">${icon('bag',15)} Purchase Price</span><span class="v">${fmtMoney(purchasePrice)}</span></div>
+        <div class="detail-row"><span class="k">${icon('sparkle',15)} Selling Price</span><span class="v accent">${fmtMoney(sellingPrice)}</span></div>
+        <div class="detail-row"><span class="k">${icon('barChart',15)} Margin / item</span><span class="v">${fmtMoney(margin)}</span></div>
+      </div>
+      <div class="qr-card">
+        <img src="${p.qrDataUrl}" alt="QR code" />
+        <p class="lbl">${icon('qr',14)} Scan with any camera to view this product</p>
+        <a class="btn small secondary" style="margin-top:14px;" href="${p.qrDataUrl}" download="qr-${p.title.replace(/\s+/g,'-')}.png">${icon('download',15)} Download QR</a>
+      </div>`;
+  }
+
+  function customerBlock(p) {
+    const opt = p.isVariant ? p.variantOptions.find((o) => o.key === selectedVariant) : null;
+    return `
+      ${sizePicker(p, false)}
+      <div class="card spec-card">
+        ${p.isVariant ? '' : `<div class="detail-row"><span class="k">${icon('box',15)} Size(s)</span><span class="v">${p.sizes || '—'}</span></div>`}
+        <div class="detail-row"><span class="k">${icon('sparkle',15)} Price</span><span class="v accent">${fmtMoney(opt ? opt.sellingPrice : p.sellingPrice)}</span></div>
+      </div>`;
+  }
+
+  let cachedProduct = null;
+
+  function render(p) {
+    if (p.isVariant && !selectedVariant) selectedVariant = p.variantOptions[0].key;
+    const opt = p.isVariant ? p.variantOptions.find((o) => o.key === selectedVariant) : null;
+    const stockQty = opt ? opt.stockQty : p.stockQty;
+    const stockBadge = stockQty === 0
+      ? '<span class="badge danger">Out of stock</span>'
+      : stockQty <= 2 ? `<span class="badge danger">${stockQty} left</span>` : `<span class="badge success">${stockQty} in stock</span>`;
+
+    document.getElementById('content').innerHTML = `
+      <div class="detail-photo-wrap">
+        <img src="${p.imageUrl || ''}" onerror="this.style.opacity=0" />
+      </div>
+      <div class="detail-title-row">
+        <h2>${p.title}</h2>
+        ${stockBadge}
+      </div>
+      ${isOwner ? ownerBlock(p) : customerBlock(p)}
+    `;
+
+    document.querySelectorAll('.sizeOptCheck').forEach((el) => {
+      el.addEventListener('change', () => {
+        selectedVariant = el.dataset.key;
+        render(p);
+      });
+    });
+
+    const bar = document.getElementById('stickyBar');
+    bar.style.display = 'flex';
+    bar.querySelector('.total').textContent = fmtMoney(opt ? opt.sellingPrice : p.sellingPrice);
+    const cta = bar.querySelector('.cta');
+    if (isOwner) {
+      cta.innerHTML = icon('bag', 17) + 'Add to Sale';
+      cta.onclick = () => { location.href = '/billing.html?add=' + p.id + (p.isVariant ? '&size=' + selectedVariant : ''); };
+    } else {
+      cta.innerHTML = icon('bag', 17) + 'Add to Cart';
+      cta.onclick = () => {
+        addToCart(p.id, p.isVariant ? selectedVariant : '', 1);
+        toast('Added to cart: ' + p.title);
+      };
+    }
+    if (stockQty === 0) {
+      cta.style.pointerEvents = 'none';
+      cta.style.opacity = '0.5';
+    } else {
+      cta.style.pointerEvents = '';
+      cta.style.opacity = '';
+    }
+  }
+
+  async function load() {
+    try {
+      const p = isOwner ? await apiGet('/api/products/' + id) : await apiGet('/api/shop/products/' + id);
+      cachedProduct = p;
+      render(p);
+    } catch (err) {
+      document.getElementById('content').innerHTML = `<div class="empty-state"><div class="ic">${icon('search',24)}</div><div class="t">Product not found</div><div class="d">It may have been deleted.</div></div>`;
+      document.getElementById('stickyBar').style.display = 'none';
+    }
+  }
+
+  (async function init() {
+    const me = await apiGet('/api/auth/me').catch(() => ({ isOwner: false }));
+    isOwner = me.isOwner;
+    document.getElementById('backIcon').href = isOwner ? '/products.html' : '/shop.html';
+    document.getElementById('editIcon').style.visibility = isOwner ? 'visible' : 'hidden';
+    renderBottomNav(isOwner ? 'products' : 'shop', isOwner ? 'owner' : 'customer');
+    load();
+  })();
+
+  socket.on('product:updated', (p) => { if (p.id === id) load(); });
+  socket.on('product:deleted', (d) => { if (d.id === id) { document.getElementById('content').innerHTML = `<div class="empty-state">This product was deleted.</div>`; document.getElementById('stickyBar').style.display = 'none'; } });
+</script>
+
+<div class="sticky-bar" id="stickyBar" style="display:none;">
+  <div style="flex:1;">
+    <div style="font-size:11px;color:var(--ink-faint);font-weight:700;">PRICE</div>
+    <div class="total" style="font-family:var(--font-display);font-size:19px;font-weight:600;color:var(--primary-dark);"></div>
+  </div>
+  <button class="btn cta" style="flex:1.3;">Add</button>
+</div>
