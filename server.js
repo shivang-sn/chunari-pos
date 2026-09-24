@@ -14,7 +14,7 @@ const { db, getSetting, setSetting, nextBillNo } = require('./db');
 const { importExistingImages } = require('./importImages');
 
 const PORT = process.env.PORT || 3000;
-const uploadsDir = path.join(__dirname, 'uploads');
+const uploadsDir = path.join(process.env.DATA_DIR || __dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 function getLocalIp() {
