@@ -3,9 +3,10 @@ const fs = require('fs');
 const crypto = require('crypto');
 
 const uploadsDir = path.join(process.env.DATA_DIR || __dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
 const useBlob = !!process.env.BLOB_READ_WRITE_TOKEN;
+// Only touch the local uploads directory when it'll actually be used — on
+// Vercel's read-only filesystem this would throw before Blob ever gets a chance.
+if (!useBlob && !fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 // Saves an uploaded file's buffer and returns the URL/path to store in the DB
 // (an absolute https URL on Vercel Blob, or "/uploads/<file>" locally).

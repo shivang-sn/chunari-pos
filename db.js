@@ -2,14 +2,19 @@ const { createClient } = require('@libsql/client');
 const path = require('path');
 const fs = require('fs');
 
-const dataDir = path.join(process.env.DATA_DIR || __dirname, 'data');
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
 // Local dev / Render: an embedded SQLite file, same as before (no account needed).
 // Vercel (or any host without a writable disk): point these at a Turso database
 // so the exact same SQL keeps working over the network instead of a local file.
-const url = process.env.TURSO_DATABASE_URL || `file:${path.join(dataDir, 'chunari.db')}`;
+// The local data directory is only created (and only needs to exist) in the
+// former case — on Vercel's read-only filesystem, touching it would crash the
+// function before it even gets a chance to use the remote database instead.
+let url = process.env.TURSO_DATABASE_URL;
 const authToken = process.env.TURSO_AUTH_TOKEN;
+if (!url) {
+  const dataDir = path.join(process.env.DATA_DIR || __dirname, 'data');
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  url = `file:${path.join(dataDir, 'chunari.db')}`;
+}
 const client = createClient(authToken ? { url, authToken } : { url });
 
 async function run(sql, args = []) {
